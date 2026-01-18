@@ -1,0 +1,93 @@
+import { useLocation, useNavigate } from "@solidjs/router";
+import { createContext, createEffect, createSignal, onMount, useContext } from "solid-js";
+import { api } from "../utils/api";
+
+type User = { id: string; username: string; email: string; organizationId: string; role: "USER" | "SUPER" };
+
+type AuthState = {
+  me: () => User | null;
+  shareUrl: () => string | null;
+  loading: () => boolean;
+  signIn: (identifier: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+};
+
+const AuthContext = createContext<AuthState>();
+
+export const AuthProvider = (props: { children: any }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const [me, setMe] = createSignal<User | null>(null);
+  const [shareUrl, setShareUrl] = createSignal<string | null>(null);
+  const [loading, setLoading] = createSignal(true);
+
+  const fetchMe = async () => {
+    try {
+      const res = await api.get<{ ok: boolean; user?: User; shareUrl?: string }>("/auth/me");
+      if (!res.ok) {
+        setMe(null);
+        setShareUrl(null);
+        return;
+      }
+      setMe(res.user ?? null);
+      setShareUrl(res.shareUrl ?? null);
+    } catch {
+      setMe(null);
+      setShareUrl(null);
+    }
+  };
+
+  onMount(() => {
+    void (async () => {
+      setLoading(true);
+      await fetchMe();
+      setLoading(false);
+    })();
+  });
+
+  createEffect(() => {
+    const path = location.pathname;
+    const current = me();
+    const isPublic =
+      ["/sign-in", "/sign-up", "/verify-email"].includes(path) ||
+      path.startsWith("/reset-password/") ||
+      path.startsWith("/share/");
+    if (loading()) return;
+    if (!current && !isPublic) navigate("/sign-in", { replace: true });
+    if (current && ["/sign-in", "/sign-up"].includes(path)) navigate("/", { replace: true });
+  });
+
+  const signIn = async (identifier: string, password: string) => {
+    setLoading(true);
+    const res = await api.post<{ ok: boolean; user?: any; code?: string }>("/auth/signin", { identifier, password });
+    if (!res.ok) {
+      setLoading(false);
+      throw new Error(res.code ?? "SIGNIN_FAILED");
+    }
+    await fetchMe();
+    setLoading(false);
+    navigate("/", { replace: true });
+  };
+
+  const signOut = async () => {
+    setLoading(true);
+    await api.postNoJson("/auth/signout", null);
+    setMe(null);
+    setShareUrl(null);
+    setLoading(false);
+    try {
+      sessionStorage.setItem("flash_toast", JSON.stringify({ kind: "success", message: "Signed out." }));
+    } catch {}
+    navigate("/sign-in", { replace: true });
+  };
+
+  const value: AuthState = { me, shareUrl, loading, signIn, signOut };
+  return <AuthContext.Provider value={value}>{props.children}</AuthContext.Provider>;
+};
+
+export const useAuth = () => {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("AuthContext missing");
+  return ctx;
+};

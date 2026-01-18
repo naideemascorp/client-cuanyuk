@@ -1,0 +1,25 @@
+{
+  "name": "client",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bunx vite --port 3000 --host",
+    "build": "bunx vite build",
+    "preview": "bunx vite preview --port 3000 --host",
+    "lint": "bunx biome check .",
+    "format": "bunx biome format --write .",
+    "typecheck": "bunx tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@solidjs/router": "^0.15.3",
+    "solid-js": "^1.9.4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "bun-types": "^1.0.19",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "vite-plugin-solid": "^2.11.2"
+  }
+}
+
