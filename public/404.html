@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Loading…</title>
+  </head>
+  <body>
+    <script>
+      (function () {
+        var target = window.location.pathname + window.location.search + window.location.hash;
+        var url = "/?__redirect=" + encodeURIComponent(target);
+        window.location.replace(url);
+      })();
+    </script>
+  </body>
+</html>

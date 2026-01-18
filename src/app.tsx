@@ -1,5 +1,5 @@
-import { Route, Router } from "@solidjs/router";
-import { lazy } from "solid-js";
+import { Route, Router, useLocation, useNavigate } from "@solidjs/router";
+import { lazy, createEffect } from "solid-js";
 import { AuthProvider } from "./state/auth";
 import { Footer } from "./components/footer";
 
@@ -11,11 +11,27 @@ const Share = lazy(() => import("./pages/share"));
 const Admin = lazy(() => import("./pages/admin"));
 const ResetPassword = lazy(() => import("./pages/reset-password"));
 
+const RedirectShim = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  createEffect(() => {
+    const search = location.search ?? window.location.search;
+    const sp = new URLSearchParams(search);
+    const raw = sp.get("__redirect");
+    if (!raw) return;
+    sp.delete("__redirect");
+    const target = decodeURIComponent(raw);
+    navigate(target, { replace: true });
+  });
+  return null;
+};
+
 export const App = () => (
   <Router
     root={(props) => (
       <AuthProvider>
         <div class="appRoot">
+          <RedirectShim />
           <div class="appMain">{props.children}</div>
           <Footer />
         </div>

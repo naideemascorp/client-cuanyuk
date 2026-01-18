@@ -134,9 +134,9 @@ export default function AdminIp() {
                 </div>
                 <div class="field">
                   <label>Status</label>
-                  <select class="select" value={status()} onChange={(e) => setStatus(e.currentTarget.value as any)}>
+                  <select class="select" value={status()} onChange={(e) => setStatus(e.currentTarget.value as "ACTIVE" | "INACTIVE")}>
                     <option value="ACTIVE">Whitelist</option>
-                    <option value="INACTIVE">Backlist</option>
+                    <option value="INACTIVE">Blacklist</option>
                   </select>
                 </div>
                 <div class="field">
@@ -177,10 +177,14 @@ export default function AdminIp() {
                   </div>
                   <div class="field" style="margin: 0">
                     <label>Status</label>
-                    <select class="select" value={statusFilter()} onChange={(e) => setStatusFilter(e.currentTarget.value as any)}>
+                    <select
+                      class="select"
+                      value={statusFilter()}
+                      onChange={(e) => setStatusFilter(e.currentTarget.value as "ALL" | "WHITELIST" | "BACKLIST")}
+                    >
                       <option value="ALL">All</option>
                       <option value="WHITELIST">Whitelist</option>
-                      <option value="BACKLIST">Backlist</option>
+                      <option value="BACKLIST">Blacklist</option>
                     </select>
                   </div>
                 </div>
@@ -196,7 +200,7 @@ export default function AdminIp() {
                           <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
                             <div style="font-weight: 700; letter-spacing: -0.01em">{e.ip}</div>
                             <div style="color: rgba(250,250,255,0.68); font-size: 13px">
-                              {e.status === "ACTIVE" ? "Whitelist" : "Backlist"}
+                              {e.status === "ACTIVE" ? "Whitelist" : "Blacklist"}
                             </div>
                           </div>
                           <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.4">{e.note ?? "—"}</div>

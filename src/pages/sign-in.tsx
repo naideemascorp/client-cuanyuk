@@ -99,13 +99,7 @@ export default function SignIn() {
   const requestReset = async () => {
     const e = resetEmail().trim();
     if (!e) {
-      setToast({ id: Date.now(), kind: "error", message: "Please enter your email address." });
-      toastTimer = window.setTimeout(() => setToast(null), 5000);
-      return;
-    }
-    const basicEmailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
-    if (!basicEmailOk) {
-      setToast({ id: Date.now(), kind: "error", message: "Email is invalid." });
+      setToast({ id: Date.now(), kind: "error", message: "Please enter your email, phone number, or username." });
       toastTimer = window.setTimeout(() => setToast(null), 5000);
       return;
     }
@@ -113,7 +107,7 @@ export default function SignIn() {
     try {
       const res = await api.post<{ ok: boolean; code?: string; nextAllowedAt?: string; remainingToday?: number; retryAt?: string }>(
         "/auth/password-reset/request",
-        { email: e }
+        { identifier: e }
       );
       if (!res.ok) {
         if (res.code === "USER_NOT_FOUND") {
@@ -169,7 +163,7 @@ export default function SignIn() {
   const openReset = () => {
     setResetOpen(true);
     const ident = identifier().trim();
-    setResetEmail(ident.includes("@") ? ident : "");
+    setResetEmail(ident);
     setResetSent(false);
     setResetNextAllowedAt(null);
     setResetRetryAt(null);
@@ -190,7 +184,7 @@ export default function SignIn() {
               <div class="cardInner">
                 <form onSubmit={onSubmit} class="grid" style="grid-template-columns: repeat(12, 1fr); gap: 14px">
                   <div class="field" style="grid-column: span 12">
-                    <label>Email or Username</label>
+                    <label>Email / Phone Number / Username</label>
                     <input value={identifier()} onInput={(e) => setIdentifier(e.currentTarget.value)} autocomplete="username" />
                   </div>
                   <div class="field" style="grid-column: span 12">
@@ -306,11 +300,11 @@ export default function SignIn() {
         <div style="display: grid; gap: 12px">
           <div style="font-weight: 700; letter-spacing: -0.02em; font-size: 20px">Forgot Password</div>
           <div style="color: rgba(250,250,255,0.72); font-size: 14px; line-height: 1.55">
-            Enter your email to receive a reset link (expires in 1 day).
+            Enter your email, phone number, or username to receive a reset link (expires in 1 day).
           </div>
           <div class="field">
-            <label>Email</label>
-            <input value={resetEmail()} onInput={(e) => setResetEmail(e.currentTarget.value)} autocomplete="email" />
+            <label>Email / Phone Number / Username</label>
+            <input value={resetEmail()} onInput={(e) => setResetEmail(e.currentTarget.value)} autocomplete="username" />
           </div>
           <div
             style={{

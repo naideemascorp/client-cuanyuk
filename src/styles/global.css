@@ -746,6 +746,23 @@ input {
   background-clip: padding-box;
 }
 
+.modalListScroll {
+  max-height: min(62vh, 620px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.modalListScroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.modalListScroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  border: 2px solid rgba(0, 0, 0, 0);
+  background-clip: padding-box;
+}
+
 .appFooter {
   width: 100%;
   margin-top: auto;

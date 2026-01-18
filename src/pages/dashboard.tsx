@@ -3,6 +3,7 @@ import { api } from "../utils/api";
 import { useAuth } from "../state/auth";
 import { Modal } from "../components/modal";
 import { Toast, type ToastState } from "../components/toast";
+import type { RouteSectionProps } from "@solidjs/router";
 
 type Merchant = { id: string; name: string; category: string; pictureUrl: string | null };
 type PaymentItem = {
@@ -33,9 +34,11 @@ const groupByCategory = (merchants: Merchant[]) => {
   }));
 };
 
-export default function Dashboard(props: any) {
+type DashboardProps = { publicToken?: string } & Partial<RouteSectionProps<unknown>>;
+
+export default function Dashboard(props: DashboardProps) {
   const auth = useAuth();
-  const publicToken = (props as { publicToken?: string }).publicToken;
+  const publicToken = props.publicToken;
   const [merchants, setMerchants] = createSignal<Merchant[]>([]);
   const [items, setItems] = createSignal<PaymentItem[]>([]);
   const [notFound, setNotFound] = createSignal(false);
@@ -126,6 +129,40 @@ export default function Dashboard(props: any) {
   const defaultMerchantImage = (name: string) => {
     const initial = (name.trim()[0] ?? "M").toUpperCase();
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff7ccf"/><stop offset="0.5" stop-color="#9d7cff"/><stop offset="1" stop-color="#7cffd6"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><circle cx="94" cy="34" r="26" fill="rgba(255,255,255,.18)"/><circle cx="28" cy="100" r="30" fill="rgba(0,0,0,.14)"/><text x="64" y="76" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial" font-size="54" font-weight="800" fill="rgba(10,12,20,.78)">${initial}</text></svg>`;
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  };
+
+  const defaultQrisImage = (label: string) => {
+    const initial = (label.trim()[0] ?? "Q").toUpperCase();
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="840" viewBox="0 0 1200 840">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff7ccf" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#9d7cff" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#7cffd6" stop-opacity="0.22"/>
+    </linearGradient>
+    <radialGradient id="r" cx="50%" cy="40%" r="80%">
+      <stop offset="0" stop-color="rgba(255,255,255,0.14)"/>
+      <stop offset="1" stop-color="rgba(0,0,0,0)"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="840" rx="44" fill="rgba(10,12,20,0.92)"/>
+  <rect x="18" y="18" width="1164" height="804" rx="38" fill="url(#g)"/>
+  <rect x="34" y="34" width="1132" height="772" rx="34" fill="rgba(16,20,34,0.78)"/>
+  <rect x="34" y="34" width="1132" height="772" rx="34" fill="url(#r)" opacity="0.8"/>
+  <g opacity="0.9">
+    <rect x="120" y="140" width="380" height="380" rx="36" fill="rgba(0,0,0,0.18)" stroke="rgba(255,255,255,0.12)"/>
+    <rect x="160" y="180" width="300" height="300" rx="30" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)"/>
+    <text x="310" y="355" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial" font-size="120" font-weight="850" fill="rgba(250,250,255,0.18)">${initial}</text>
+  </g>
+  <text x="560" y="250" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial" font-size="54" font-weight="850" fill="rgba(250,250,255,0.88)">QRIS image not available</text>
+  <text x="560" y="320" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial" font-size="28" font-weight="500" fill="rgba(250,250,255,0.62)">The previous upload is broken or missing.</text>
+  <text x="560" y="390" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial" font-size="28" font-weight="500" fill="rgba(250,250,255,0.62)">Please upload again or open the link.</text>
+  <g opacity="0.85">
+    <rect x="560" y="450" width="520" height="88" rx="22" fill="rgba(0,0,0,0.22)" stroke="rgba(255,255,255,0.14)"/>
+    <text x="820" y="508" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial" font-size="28" font-weight="700" fill="rgba(250,250,255,0.82)">Open QRIS Image</text>
+  </g>
+</svg>`;
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   };
 
@@ -537,14 +574,14 @@ export default function Dashboard(props: any) {
                     <div
                       style={{
                         display: "grid",
-                        "grid-template-columns": "repeat(12, 1fr)",
+                        "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))",
                         gap: "12px",
                         "margin-top": "14px"
                       }}
                     >
                       <For each={[1, 2, 3, 4, 5, 6, 7, 8, 9]}>
                         {() => (
-                          <div class="card skeleton" style={{ "grid-column": "span 4", height: "92px" }}>
+                          <div class="card skeleton" style={{ height: "92px" }}>
                             <div class="cardInner" />
                           </div>
                         )}
@@ -564,7 +601,7 @@ export default function Dashboard(props: any) {
                           <div
                             style={{
                               display: "grid",
-                              "grid-template-columns": "repeat(12, 1fr)",
+                              "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))",
                               gap: "12px",
                               "margin-top": "10px"
                             }}
@@ -576,7 +613,6 @@ export default function Dashboard(props: any) {
                                   <button
                                     class="card"
                                     style={{
-                                      "grid-column": "span 4",
                                       cursor: "pointer",
                                       padding: "0",
                                       "text-align": "left"
@@ -783,95 +819,103 @@ export default function Dashboard(props: any) {
                     </button>
                   </div>
 
-                  <Show
-                    when={selectedItems().length}
-                    fallback={
-                      loading() ? (
-                        <div
-                          style={{
-                            display: "grid",
-                            gap: "12px",
-                            "grid-template-columns": "repeat(auto-fit, minmax(240px, 1fr))"
-                          }}
-                        >
-                          <For each={[1, 2, 3, 4, 5, 6]}>
-                            {() => (
-                              <div class="card skeleton" style={{ height: "160px" }}>
-                                <div class="cardInner" />
-                              </div>
-                            )}
-                          </For>
-                        </div>
-                      ) : (
-                        <div class="emptyCenter">
-                          <div class="emptyLogo">CY</div>
-                          <div class="emptyTitle">No payments yet</div>
-                          <div class="emptyText">Drop a payment link or QRIS and it’ll show up here.</div>
-                        </div>
-                      )
-                    }
-                  >
-                    <div
-                      style={{
-                        display: "grid",
-                        gap: "12px",
-                        "grid-template-columns": "repeat(auto-fit, minmax(240px, 1fr))"
-                      }}
-                    >
-                      <For each={selectedItems()}>
-                        {(it) => (
-                          <div style="border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 12px; display: grid; gap: 10px">
-                            <div style="display: flex; gap: 10px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
-                              <div style="color: rgba(250,250,255,0.86); font-size: 16px; font-weight: 750; letter-spacing: -0.02em">
-                                {formatIdr(it.totalAmount)}
-                              </div>
-                              <div style="color: rgba(250,250,255,0.62); font-size: 13px">
-                                {formatCountdown(it.expiresAt)}
-                              </div>
-                            </div>
-                            <Show when={it.kind === "LINK" && it.paymentUrl}>
-                              <button
-                                class="btn btnWide"
-                                type="button"
-                                disabled={Boolean(action())}
-                                onClick={() => openUrl(`${it.id}:link`, it.paymentUrl!)}
-                              >
-                                <span style="display: inline-flex; gap: 10px; align-items: center">
-                                  {openItemId() === `${it.id}:link` ? <span class="spinner" /> : null}
-                                  <span>Open Payment Link</span>
-                                </span>
-                              </button>
-                            </Show>
-                            <Show when={it.kind === "QRIS" && it.qrisUrl}>
-                              <img
-                                src={it.qrisUrl!}
-                                style="width: 100%; max-height: 420px; object-fit: contain; border-radius: 16px; border: 1px solid rgba(255,255,255,0.12)"
-                              />
-                              <button
-                                class="btn btnWide"
-                                type="button"
-                                disabled={Boolean(action())}
-                                onClick={() => openUrl(`${it.id}:qris`, it.qrisUrl!)}
-                              >
-                                <span style="display: inline-flex; gap: 10px; align-items: center">
-                                  {openItemId() === `${it.id}:qris` ? <span class="spinner" /> : null}
-                                  <span>Open QRIS Image</span>
-                                </span>
-                              </button>
-                            </Show>
-                            <Show when={!readOnly() && it.status === "ACTIVE"}>
-                              <button class="btn btnWide" disabled={Boolean(action())} onClick={() => void deactivate(it.id)}>
-                                <span style="display: inline-flex; gap: 10px; align-items: center">
-                                  {isAction("deactivate", it.id) ? <span class="spinner" /> : null}
-                                  <span>{isAction("deactivate", it.id) ? "Deactivating…" : "Deactivate"}</span>
-                                </span>
-                              </button>
-                            </Show>
+                  <div class="modalListScroll">
+                    <Show
+                      when={selectedItems().length}
+                      fallback={
+                        loading() ? (
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: "12px",
+                              "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))"
+                            }}
+                          >
+                            <For each={[1, 2, 3, 4, 5, 6]}>
+                              {() => (
+                                <div class="card skeleton" style={{ height: "160px" }}>
+                                  <div class="cardInner" />
+                                </div>
+                              )}
+                            </For>
                           </div>
-                        )}
-                      </For>
-                    </div>
-                  </Show>
+                        ) : (
+                          <div class="emptyCenter">
+                            <div class="emptyLogo">CY</div>
+                            <div class="emptyTitle">No payments yet</div>
+                            <div class="emptyText">Drop a payment link or QRIS and it’ll show up here.</div>
+                          </div>
+                        )
+                      }
+                    >
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: "12px",
+                          "grid-template-columns": tab() === "QRIS" ? "repeat(auto-fit, minmax(260px, 1fr))" : "repeat(auto-fit, minmax(220px, 1fr))"
+                        }}
+                      >
+                        <For each={selectedItems()}>
+                          {(it) => (
+                            <div style="border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 12px; display: grid; gap: 10px">
+                              <div style="display: flex; gap: 10px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
+                                <div style="color: rgba(250,250,255,0.86); font-size: 16px; font-weight: 750; letter-spacing: -0.02em">
+                                  {formatIdr(it.totalAmount)}
+                                </div>
+                                <div style="color: rgba(250,250,255,0.62); font-size: 13px">
+                                  {formatCountdown(it.expiresAt)}
+                                </div>
+                              </div>
+                              <Show when={it.kind === "LINK" && it.paymentUrl}>
+                                <button
+                                  class="btn btnWide"
+                                  type="button"
+                                  disabled={Boolean(action())}
+                                  onClick={() => openUrl(`${it.id}:link`, it.paymentUrl!)}
+                                >
+                                  <span style="display: inline-flex; gap: 10px; align-items: center">
+                                    {openItemId() === `${it.id}:link` ? <span class="spinner" /> : null}
+                                    <span>Open Payment Link</span>
+                                  </span>
+                                </button>
+                              </Show>
+                              <Show when={it.kind === "QRIS" && it.qrisUrl}>
+                                <img
+                                  src={it.qrisUrl!}
+                                  style="width: 100%; max-height: 420px; object-fit: contain; border-radius: 16px; border: 1px solid rgba(255,255,255,0.12)"
+                                  onError={(e) => {
+                                    const img = e.currentTarget;
+                                    if (img.dataset.fallback === "1") return;
+                                    img.dataset.fallback = "1";
+                                    img.src = defaultQrisImage(m().name);
+                                  }}
+                                />
+                                <button
+                                  class="btn btnWide"
+                                  type="button"
+                                  disabled={Boolean(action())}
+                                  onClick={() => openUrl(`${it.id}:qris`, it.qrisUrl!)}
+                                >
+                                  <span style="display: inline-flex; gap: 10px; align-items: center">
+                                    {openItemId() === `${it.id}:qris` ? <span class="spinner" /> : null}
+                                    <span>Open QRIS Image</span>
+                                  </span>
+                                </button>
+                              </Show>
+                              <Show when={!readOnly() && it.status === "ACTIVE"}>
+                                <button class="btn btnWide" disabled={Boolean(action())} onClick={() => void deactivate(it.id)}>
+                                  <span style="display: inline-flex; gap: 10px; align-items: center">
+                                    {isAction("deactivate", it.id) ? <span class="spinner" /> : null}
+                                    <span>{isAction("deactivate", it.id) ? "Deactivating…" : "Deactivate"}</span>
+                                  </span>
+                                </button>
+                              </Show>
+                            </div>
+                          )}
+                        </For>
+                      </div>
+                    </Show>
+                  </div>
                 </div>
               )}
             </Show>

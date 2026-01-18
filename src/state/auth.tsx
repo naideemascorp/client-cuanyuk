@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "@solidjs/router";
-import { createContext, createEffect, createSignal, onMount, useContext } from "solid-js";
+import { createContext, createEffect, createSignal, onMount, useContext, type JSX } from "solid-js";
 import { api } from "../utils/api";
 
 type User = { id: string; username: string; email: string; organizationId: string; role: "USER" | "SUPER" };
@@ -14,7 +14,7 @@ type AuthState = {
 
 const AuthContext = createContext<AuthState>();
 
-export const AuthProvider = (props: { children: any }) => {
+export const AuthProvider = (props: { children: JSX.Element }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -28,6 +28,9 @@ export const AuthProvider = (props: { children: any }) => {
       if (!res.ok) {
         setMe(null);
         setShareUrl(null);
+        try {
+          localStorage.removeItem("auth_token");
+        } catch {}
         return;
       }
       setMe(res.user ?? null);
@@ -60,7 +63,7 @@ export const AuthProvider = (props: { children: any }) => {
 
   const signIn = async (identifier: string, password: string) => {
     setLoading(true);
-    const res = await api.post<{ ok: boolean; token?: string; user?: any; code?: string }>("/auth/signin", {
+    const res = await api.post<{ ok: boolean; token?: string; user?: User; code?: string }>("/auth/signin", {
       identifier,
       password
     });

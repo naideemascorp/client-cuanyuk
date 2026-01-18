@@ -185,7 +185,7 @@ export default function Admin() {
       await refreshUsers();
       const editing = editingUserId();
       if (editing === u.id) {
-        const refreshed = (users().find((x) => x.id === u.id) ?? null) as any;
+        const refreshed = users().find((x) => x.id === u.id);
         if (refreshed) beginEditUser(refreshed);
       }
     } catch (e) {
@@ -279,7 +279,7 @@ export default function Admin() {
                     </div>
                     <div class="field">
                       <label>Status</label>
-                      <select class="select" value={ipStatus()} onChange={(e) => setIpStatus(e.currentTarget.value as any)}>
+                      <select class="select" value={ipStatus()} onChange={(e) => setIpStatus(e.currentTarget.value as "ACTIVE" | "INACTIVE")}>
                         <option value="ACTIVE">Whitelist</option>
                         <option value="INACTIVE">Blacklist</option>
                       </select>
@@ -329,7 +329,11 @@ export default function Admin() {
                       </div>
                       <div class="field" style="margin: 0">
                         <label>Status</label>
-                        <select class="select" value={ipStatusFilter()} onChange={(e) => setIpStatusFilter(e.currentTarget.value as any)}>
+                        <select
+                          class="select"
+                          value={ipStatusFilter()}
+                          onChange={(e) => setIpStatusFilter(e.currentTarget.value as "ALL" | "WHITELIST" | "BACKLIST")}
+                        >
                           <option value="ALL">All</option>
                           <option value="WHITELIST">Whitelist</option>
                           <option value="BACKLIST">Blacklist</option>
@@ -438,14 +442,18 @@ export default function Admin() {
                         </div>
                         <div class="field">
                           <label>Role</label>
-                          <select class="select" value={editRole()} onChange={(e) => setEditRole(e.currentTarget.value as any)}>
+                          <select class="select" value={editRole()} onChange={(e) => setEditRole(e.currentTarget.value as "USER" | "SUPER")}>
                             <option value="USER">User</option>
                             <option value="SUPER">Super</option>
                           </select>
                         </div>
                         <div class="field">
                           <label>Status</label>
-                          <select class="select" value={editStatus()} onChange={(e) => setEditStatus(e.currentTarget.value as any)}>
+                          <select
+                            class="select"
+                            value={editStatus()}
+                            onChange={(e) => setEditStatus(e.currentTarget.value as "ACTIVE" | "INACTIVE")}
+                          >
                             <option value="ACTIVE">Active</option>
                             <option value="INACTIVE">Inactive</option>
                           </select>
@@ -491,7 +499,11 @@ export default function Admin() {
                       </div>
                       <div class="field" style="margin: 0">
                         <label>Status</label>
-                        <select class="select" value={userStatusFilter()} onChange={(e) => setUserStatusFilter(e.currentTarget.value as any)}>
+                        <select
+                          class="select"
+                          value={userStatusFilter()}
+                          onChange={(e) => setUserStatusFilter(e.currentTarget.value as "ALL" | "ACTIVE" | "INACTIVE")}
+                        >
                           <option value="ALL">All</option>
                           <option value="ACTIVE">Active</option>
                           <option value="INACTIVE">Inactive</option>
@@ -499,7 +511,11 @@ export default function Admin() {
                       </div>
                       <div class="field" style="margin: 0">
                         <label>Role</label>
-                        <select class="select" value={userRoleFilter()} onChange={(e) => setUserRoleFilter(e.currentTarget.value as any)}>
+                        <select
+                          class="select"
+                          value={userRoleFilter()}
+                          onChange={(e) => setUserRoleFilter(e.currentTarget.value as "ALL" | "USER" | "SUPER")}
+                        >
                           <option value="ALL">All</option>
                           <option value="USER">User</option>
                           <option value="SUPER">Super</option>
