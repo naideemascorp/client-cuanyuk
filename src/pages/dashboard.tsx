@@ -462,7 +462,7 @@ export default function Dashboard(props: any) {
                       <path d="M21 3v6h-6" />
                     </svg>
                   ) : null}
-                  <span>{syncing() ? "Syncing…" : "Sync"}</span>
+                  <span>{syncing() ? "Refreshing…" : "Refresh"}</span>
                 </span>
               </button>
               <Show when={!readOnly() && isSuper()}>

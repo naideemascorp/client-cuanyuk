@@ -261,10 +261,10 @@ export default function Admin() {
           <Show when={isSuper()}>
             <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px">
               <button class={`btn ${tab() === "ips" ? "btnPrimary" : ""}`} type="button" onClick={() => setTab("ips")}>
-                IP List
+                IP Lists
               </button>
               <button class={`btn ${tab() === "users" ? "btnPrimary" : ""}`} type="button" onClick={() => setTab("users")}>
-                User List
+                User Lists
               </button>
             </div>
 
@@ -281,7 +281,7 @@ export default function Admin() {
                       <label>Status</label>
                       <select class="select" value={ipStatus()} onChange={(e) => setIpStatus(e.currentTarget.value as any)}>
                         <option value="ACTIVE">Whitelist</option>
-                        <option value="INACTIVE">Backlist</option>
+                        <option value="INACTIVE">Blacklist</option>
                       </select>
                     </div>
                     <div class="field">
@@ -322,7 +322,7 @@ export default function Admin() {
                       </button>
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 180px; gap: 10px">
+                    <div class="filterRow filterRow2">
                       <div class="field" style="margin: 0">
                         <label>Search</label>
                         <input value={ipQuery()} onInput={(e) => setIpQuery(e.currentTarget.value)} placeholder="Search IP or remarks" />
@@ -332,7 +332,7 @@ export default function Admin() {
                         <select class="select" value={ipStatusFilter()} onChange={(e) => setIpStatusFilter(e.currentTarget.value as any)}>
                           <option value="ALL">All</option>
                           <option value="WHITELIST">Whitelist</option>
-                          <option value="BACKLIST">Backlist</option>
+                          <option value="BACKLIST">Blacklist</option>
                         </select>
                       </div>
                     </div>
@@ -346,7 +346,7 @@ export default function Admin() {
                                 <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
                                   <div style="font-weight: 700; letter-spacing: -0.01em">{e.ip}</div>
                                   <div style="color: rgba(250,250,255,0.68); font-size: 13px">
-                                    {e.status === "ACTIVE" ? "Whitelist" : "Backlist"}
+                                    {e.status === "ACTIVE" ? "Whitelist" : "Blacklist"}
                                   </div>
                                 </div>
                                 <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.4">{e.note ?? "—"}</div>
@@ -363,20 +363,28 @@ export default function Admin() {
                                   >
                                     Edit
                                   </button>
-                                  <button
-                                    class="btn"
-                                    disabled={ipSaving()}
-                                    onClick={() => void api.post("/admin/ips", { ip: e.ip, status: "ACTIVE", note: e.note ?? undefined }).then(refreshIps)}
-                                  >
-                                    Whitelist
-                                  </button>
-                                  <button
-                                    class="btn"
-                                    disabled={ipSaving()}
-                                    onClick={() => void api.post("/admin/ips", { ip: e.ip, status: "INACTIVE", note: e.note ?? undefined }).then(refreshIps)}
-                                  >
-                                    Backlist
-                                  </button>
+                                  <Show when={e.status !== "ACTIVE"}>
+                                    <button
+                                      class="btn"
+                                      disabled={ipSaving()}
+                                      onClick={() =>
+                                        void api.post("/admin/ips", { ip: e.ip, status: "ACTIVE", note: e.note ?? undefined }).then(refreshIps)
+                                      }
+                                    >
+                                      Whitelist
+                                    </button>
+                                  </Show>
+                                  <Show when={e.status === "ACTIVE"}>
+                                    <button
+                                      class="btn"
+                                      disabled={ipSaving()}
+                                      onClick={() =>
+                                        void api.post("/admin/ips", { ip: e.ip, status: "INACTIVE", note: e.note ?? undefined }).then(refreshIps)
+                                      }
+                                    >
+                                      Blacklist
+                                    </button>
+                                  </Show>
                                 </div>
                               </div>
                             )}
@@ -407,18 +415,18 @@ export default function Admin() {
             <Show when={tab() === "users"}>
               <div class="grid">
                 <div class="card" style="grid-column: span 5">
-                  <div class="cardInner" style="display: grid; gap: 12px">
-                    <div style="font-weight: 650; letter-spacing: -0.01em">Update User.</div>
-                    <Show
-                      when={editingUserId()}
-                      fallback={
+                  <div class="cardInner updateUserCardInner" style="display: grid; gap: 12px">
+                    <div style="font-weight: 650; letter-spacing: -0.01em">Update User</div>
+                    <Show when={!editingUserId()}>
+                      <div class="updateUserEmpty">
                         <div class="emptyCenter">
                           <div class="emptyLogo">CY</div>
                           <div class="emptyTitle">No user selected</div>
-                          <div class="emptyText">Pick someone from the list to update their profile or status.</div>
+                          <div class="emptyText">Tap a user on the right to update their profile or status.</div>
                         </div>
-                      }
-                    >
+                      </div>
+                    </Show>
+                    <Show when={editingUserId()}>
                       <div style="display: grid; gap: 12px">
                         <div class="field">
                           <label>Username</label>
@@ -461,7 +469,7 @@ export default function Admin() {
                 <div class="card" style="grid-column: span 7">
                   <div class="cardInner" style="display: grid; gap: 12px">
                     <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
-                      <div style="font-weight: 650; letter-spacing: -0.01em">User List</div>
+                      <div style="font-weight: 650; letter-spacing: -0.01em">User Lists</div>
                       <button class="btn" disabled={userLoading()} onClick={() => void refreshUsers()}>
                         <span style="display: inline-flex; gap: 10px; align-items: center">
                           {userLoading() ? <span class="spinner" /> : null}
@@ -476,7 +484,7 @@ export default function Admin() {
                       </button>
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 150px 150px; gap: 10px">
+                    <div class="filterRow filterRow3">
                       <div class="field" style="margin: 0">
                         <label>Search</label>
                         <input value={userQuery()} onInput={(e) => setUserQuery(e.currentTarget.value)} placeholder="Search email or username" />

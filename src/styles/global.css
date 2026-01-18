@@ -277,6 +277,150 @@ input {
   background: rgba(0, 0, 0, 0.14);
 }
 
+.updateUserCardInner {
+  position: relative;
+  min-height: 520px;
+}
+
+.updateUserEmpty {
+  position: absolute;
+  inset: 56px 12px 12px;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  pointer-events: none;
+}
+
+.updateUserEmpty .emptyCenter {
+  width: 100%;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.12));
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
+}
+
+.rememberToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  color: rgba(250, 250, 255, 0.78);
+}
+
+.passwordRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.passwordRow .passwordInput {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.eyeBtn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: radial-gradient(circle at 20% 20%, rgba(255, 124, 207, 0.14), transparent 58%),
+    radial-gradient(circle at 80% 30%, rgba(124, 255, 214, 0.12), transparent 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.06));
+  color: rgba(250, 250, 255, 0.86);
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  flex: 0 0 auto;
+}
+
+.eyeBtn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(157, 124, 255, 0.5);
+}
+
+.eyeBtn:active {
+  transform: translateY(0px);
+}
+
+.eyeBtn:focus-visible {
+  outline: 2px solid rgba(157, 124, 255, 0.55);
+  outline-offset: 2px;
+}
+
+.rememberInput {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.rememberBox {
+  width: 22px;
+  height: 22px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.08));
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
+  display: grid;
+  place-items: center;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.rememberBox::after {
+  content: "";
+  width: 9px;
+  height: 6px;
+  border-left: 2px solid rgba(250, 250, 255, 0.92);
+  border-bottom: 2px solid rgba(250, 250, 255, 0.92);
+  transform: rotate(-45deg) scale(0);
+  transform-origin: center;
+  transition: transform 0.15s ease;
+  margin-top: -1px;
+}
+
+.rememberInput:checked + .rememberBox {
+  border-color: rgba(124, 255, 214, 0.38);
+  background: radial-gradient(circle at 20% 20%, rgba(124, 255, 214, 0.22), transparent 55%),
+    radial-gradient(circle at 80% 30%, rgba(157, 124, 255, 0.18), transparent 55%),
+    linear-gradient(135deg, rgba(157, 124, 255, 0.18), rgba(255, 255, 255, 0.06));
+}
+
+.rememberInput:checked + .rememberBox::after {
+  transform: rotate(-45deg) scale(1);
+}
+
+.rememberToggle:hover .rememberBox {
+  transform: translateY(-1px);
+  border-color: rgba(255, 124, 207, 0.34);
+}
+
+.rememberInput:focus-visible + .rememberBox {
+  outline: 2px solid rgba(157, 124, 255, 0.55);
+  outline-offset: 2px;
+}
+
+.filterRow {
+  display: grid;
+  gap: 10px;
+  align-items: end;
+}
+
+.filterRow2 {
+  grid-template-columns: 1fr 180px;
+}
+
+.filterRow3 {
+  grid-template-columns: 1fr 150px 150px;
+}
+
 .emptyLogo {
   width: 56px;
   height: 56px;
@@ -628,5 +772,32 @@ input {
   }
   .grid {
     gap: 12px;
+  }
+}
+
+@media (max-width: 860px) {
+  .panel {
+    border-radius: 24px;
+  }
+
+  .shell {
+    padding: 18px 14px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .grid > * {
+    grid-column: 1 / -1 !important;
+  }
+
+  .filterRow2,
+  .filterRow3 {
+    grid-template-columns: 1fr;
+  }
+
+  .ipListScroll {
+    max-height: 360px;
   }
 }

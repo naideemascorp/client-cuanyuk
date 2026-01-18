@@ -10,6 +10,7 @@ export default function SignIn() {
   const navigate = useNavigate();
   const [identifier, setIdentifier] = createSignal("");
   const [password, setPassword] = createSignal("");
+  const [showPassword, setShowPassword] = createSignal(false);
   const [rememberMe, setRememberMe] = createSignal(true);
   const [toast, setToast] = createSignal<ToastState>(null);
   let toastTimer: number | null = null;
@@ -194,17 +195,45 @@ export default function SignIn() {
                   </div>
                   <div class="field" style="grid-column: span 12">
                     <label>Password</label>
-                    <input
-                      type="password"
-                      value={password()}
-                      onInput={(e) => setPassword(e.currentTarget.value)}
-                      autocomplete="current-password"
-                    />
+                    <div class="passwordRow">
+                      <input
+                        class="passwordInput"
+                        type={showPassword() ? "text" : "password"}
+                        value={password()}
+                        onInput={(e) => setPassword(e.currentTarget.value)}
+                        autocomplete="current-password"
+                      />
+                      <button
+                        class="eyeBtn"
+                        type="button"
+                        aria-label={showPassword() ? "Hide password" : "Show password"}
+                        onClick={() => setShowPassword((v) => !v)}
+                      >
+                        {showPassword() ? (
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                            <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+                            <path d="M4 4l16 16" />
+                          </svg>
+                        ) : (
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                            <circle cx="12" cy="12" r="3" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
                   </div>
                   <div style="grid-column: span 12; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center">
-                    <label style="display: inline-flex; gap: 10px; align-items: center; text-transform: none; letter-spacing: 0; font-size: 13px; color: rgba(250,250,255,0.72)">
-                      <input type="checkbox" checked={rememberMe()} onChange={(e) => setRememberMe(e.currentTarget.checked)} />
-                      Remember Me
+                    <label class="rememberToggle">
+                      <input
+                        class="rememberInput"
+                        type="checkbox"
+                        checked={rememberMe()}
+                        onChange={(e) => setRememberMe(e.currentTarget.checked)}
+                      />
+                      <span class="rememberBox" aria-hidden="true" />
+                      <span class="rememberText">Remember Me</span>
                     </label>
                     {signupAllowed() ? (
                       <button class="btn" type="button" onClick={openReset} disabled={auth.loading()}>
