@@ -22,8 +22,10 @@ export default function SignIn() {
   const [resetRetryAt, setResetRetryAt] = createSignal<number | null>(null);
   const [nowMs, setNowMs] = createSignal(Date.now());
   const [resetSuccessCount, setResetSuccessCount] = createSignal(0);
+  const [detectedIp, setDetectedIp] = createSignal<string | null>(null);
   const [signupAllowed] = createResource(async () => {
-    const res = await api.get<{ allowed: boolean }>("/auth/signup-allowed");
+    const res = await api.get<{ allowed: boolean; ip?: string }>("/auth/signup-allowed");
+    setDetectedIp(res.ip ?? null);
     return res.allowed;
   });
 
@@ -255,7 +257,10 @@ export default function SignIn() {
                     <div>2) your phone / WhatsApp number</div>
                     <div>3) why you want access (what you’re trying to do)</div>
                   </div>
-                  <div class="needAccessHint">Keep it short. If it’s urgent, say so—we’ll handle it.</div>
+                  <div class="needAccessHint">
+                    Keep it short. If it’s urgent, say so—we’ll handle it.
+                    {!signupAllowed.loading && !signupAllowed() && detectedIp() ? ` (Detected IP: ${detectedIp()})` : ""}
+                  </div>
                 </div>
               </div>
             </div>

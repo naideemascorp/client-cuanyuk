@@ -60,10 +60,18 @@ export const AuthProvider = (props: { children: any }) => {
 
   const signIn = async (identifier: string, password: string) => {
     setLoading(true);
-    const res = await api.post<{ ok: boolean; user?: any; code?: string }>("/auth/signin", { identifier, password });
+    const res = await api.post<{ ok: boolean; token?: string; user?: any; code?: string }>("/auth/signin", {
+      identifier,
+      password
+    });
     if (!res.ok) {
       setLoading(false);
       throw new Error(res.code ?? "SIGNIN_FAILED");
+    }
+    if (res.token) {
+      try {
+        localStorage.setItem("auth_token", res.token);
+      } catch {}
     }
     await fetchMe();
     setLoading(false);
@@ -76,6 +84,9 @@ export const AuthProvider = (props: { children: any }) => {
     setMe(null);
     setShareUrl(null);
     setLoading(false);
+    try {
+      localStorage.removeItem("auth_token");
+    } catch {}
     try {
       sessionStorage.setItem("flash_toast", JSON.stringify({ kind: "success", message: "Signed out." }));
     } catch {}

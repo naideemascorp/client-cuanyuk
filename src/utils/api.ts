@@ -6,8 +6,14 @@ const request = async <T>(path: string, init: RequestInit, timeoutMs = 8000): Pr
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const headers = new Headers(init.headers ?? {});
+    try {
+      const token = localStorage.getItem("auth_token");
+      if (token && !headers.has("authorization")) headers.set("authorization", `Bearer ${token}`);
+    } catch {}
     const res = await fetch(`${baseUrl}${path}`, {
       ...init,
+      headers,
       credentials: "include",
       signal: controller.signal
     });
