@@ -244,17 +244,18 @@ export default function SignIn() {
                 <div class="needAccessInner">
                   <div class="needAccessTitle">Need Access?</div>
                   <div class="needAccessText">
-                    Ok so… we’re invite‑only right now. If you want access, just message{" "}
+                    We’re invite‑only right now. If you wanna get in, email{" "}
                     <a class="pillLink" href="mailto:support@cuanyuk.com">
                       support@cuanyuk.com
                     </a>{" "}
-                    (don’t overthink it) and include:
+                    and just drop:
                   </div>
                   <div class="needAccessList">
-                    <div>1) full name / company / organization name</div>
-                    <div>2) reason for requesting access</div>
+                    <div>1) your full name / company / org name</div>
+                    <div>2) your phone / WhatsApp number</div>
+                    <div>3) why you want access (what you’re trying to do)</div>
                   </div>
-                  <div class="needAccessHint">Short + clear = fastest approval. Appreciate you.</div>
+                  <div class="needAccessHint">Keep it short. If it’s urgent, say so—we’ll handle it.</div>
                 </div>
               </div>
             </div>

@@ -229,6 +229,7 @@ export default function Dashboard(props: any) {
   };
 
   createEffect(() => {
+    if (!readOnly() && (auth.loading() || !auth.me())) return;
     void refresh({ showSpinner: true, showSkeleton: true });
     const ws = new WebSocket(`${wsBase}/ws`);
     let pingTimer: number | null = null;
@@ -422,6 +423,22 @@ export default function Dashboard(props: any) {
         </div>
       </div>
     );
+
+  if (!readOnly() && auth.loading())
+    return (
+      <div class="shell">
+        <div class="panel">
+          <div class="panelInner">
+            <div style="display: grid; place-items: center; padding: 30px 12px; gap: 10px">
+              <span class="spinner" />
+              <div style="color: rgba(250,250,255,0.72)">Loading…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+
+  if (!readOnly() && !auth.me()) return null;
 
   return (
     <div class="shell" style="place-items: start center">
