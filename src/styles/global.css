@@ -580,8 +580,13 @@ input {
   position: relative;
   overflow: hidden;
   border-radius: inherit;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 124, 207, 0.09),
+    rgba(157, 124, 255, 0.08),
+    rgba(124, 255, 214, 0.07)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .skeleton::after {
@@ -591,17 +596,70 @@ input {
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.14),
     transparent
   );
-  transform: translateX(-60%);
-  animation: shimmer 1.2s ease-in-out infinite;
+  transform: translateX(-70%);
+  filter: blur(1px);
+  animation: shimmer 1.05s ease-in-out infinite;
 }
 
 @keyframes shimmer {
   to {
-    transform: translateX(60%);
+    transform: translateX(70%);
   }
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  color: rgba(250, 250, 255, 0.86);
+  background: rgba(0, 0, 0, 0.18);
+  text-transform: uppercase;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.statusActive {
+  border-color: rgba(124, 255, 214, 0.32);
+  background: linear-gradient(135deg, rgba(124, 255, 214, 0.18), rgba(157, 124, 255, 0.1));
+  color: rgba(228, 255, 246, 0.92);
+}
+
+.statusInactive {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.14));
+  color: rgba(250, 250, 255, 0.74);
+}
+
+.statusPending {
+  border-color: rgba(157, 124, 255, 0.34);
+  background: linear-gradient(135deg, rgba(157, 124, 255, 0.18), rgba(255, 124, 207, 0.08));
+  color: rgba(245, 240, 255, 0.92);
+}
+
+.statusDeleted {
+  border-color: rgba(255, 124, 207, 0.34);
+  background: linear-gradient(135deg, rgba(255, 124, 207, 0.16), rgba(0, 0, 0, 0.16));
+  color: rgba(255, 230, 244, 0.9);
+}
+
+.selectSkeleton {
+  height: 44px;
+  border-radius: 14px;
+}
+
+.actionBar {
+  display: grid;
+  gap: 10px;
+  align-items: center;
 }
 
 .toastWrap {
@@ -702,6 +760,8 @@ input {
   border-radius: 14px;
   border: 1px dashed rgba(255, 255, 255, 0.22);
   background: rgba(255, 255, 255, 0.04);
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .filePickName {
@@ -711,6 +771,7 @@ input {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .filePickBtn {
@@ -723,6 +784,7 @@ input {
   background: linear-gradient(135deg, rgba(255, 124, 207, 0.14), rgba(157, 124, 255, 0.14), rgba(124, 255, 214, 0.12));
   color: rgba(250, 250, 255, 0.9);
   cursor: pointer;
+  flex: 0 0 auto;
 }
 
 .filePickBtn:hover {
@@ -816,5 +878,19 @@ input {
 
   .ipListScroll {
     max-height: 360px;
+  }
+
+  .filePick {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filePickName {
+    width: 100%;
+  }
+
+  .filePickBtn {
+    width: 100%;
+    justify-content: center;
   }
 }

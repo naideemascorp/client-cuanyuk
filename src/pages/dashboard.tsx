@@ -3,7 +3,7 @@ import { api } from "../utils/api";
 import { useAuth } from "../state/auth";
 import { Modal } from "../components/modal";
 import { Toast, type ToastState } from "../components/toast";
-import type { RouteSectionProps } from "@solidjs/router";
+import { useNavigate, type RouteSectionProps } from "@solidjs/router";
 
 type Merchant = { id: string; name: string; category: string; pictureUrl: string | null };
 type PaymentItem = {
@@ -38,6 +38,7 @@ type DashboardProps = { publicToken?: string } & Partial<RouteSectionProps<unkno
 
 export default function Dashboard(props: DashboardProps) {
   const auth = useAuth();
+  const navigate = useNavigate();
   const publicToken = props.publicToken;
   const [merchants, setMerchants] = createSignal<Merchant[]>([]);
   const [items, setItems] = createSignal<PaymentItem[]>([]);
@@ -70,6 +71,36 @@ export default function Dashboard(props: DashboardProps) {
   const [nowMs, setNowMs] = createSignal(Date.now());
 
   const readOnly = createMemo(() => Boolean(publicToken));
+  const [adminAccessLoading, setAdminAccessLoading] = createSignal(false);
+  const [hasAdminAccess, setHasAdminAccess] = createSignal(false);
+  const [adminChecked, setAdminChecked] = createSignal(false);
+  const hasLocalToken = () => {
+    try {
+      return Boolean(localStorage.getItem("auth_token"));
+    } catch {
+      return false;
+    }
+  };
+
+  const forceSignIn = (message: string) => {
+    try {
+      localStorage.removeItem("auth_token");
+    } catch {}
+    try {
+      sessionStorage.setItem("flash_toast", JSON.stringify({ kind: "error", message }));
+    } catch {}
+    navigate("/sign-in", { replace: true });
+  };
+
+  createEffect(() => {
+    if (readOnly()) return;
+    if (!auth.loading()) return;
+    const timer = globalThis.setTimeout(() => {
+      if (!auth.loading()) return;
+      forceSignIn("Session restore timed out. Please sign in again.");
+    }, 15_000);
+    return () => globalThis.clearTimeout(timer);
+  });
   createEffect(() => {
     try {
       document.title = readOnly() ? "CUAN YUK!" : "Dashboard";
@@ -221,19 +252,41 @@ export default function Dashboard(props: DashboardProps) {
         return;
       }
 
-      const [m, p, c] = await Promise.all([
-        api.get<{ merchants: Merchant[] }>("/merchants/"),
-        api.get<{ items: PaymentItem[] }>("/payments/active"),
-        api.get<{ categories: { id: string | null; name: string }[] }>("/categories/")
+      type Unauthorized = { ok: false; code: "UNAUTHORIZED" };
+      const isUnauthorized = (v: unknown): v is Unauthorized =>
+        Boolean(v) && typeof v === "object" && (v as { ok?: unknown }).ok === false && (v as { code?: unknown }).code === "UNAUTHORIZED";
+
+      const [mRaw, pRaw, cRaw] = await Promise.all([
+        api.get<unknown>("/merchants/"),
+        api.get<unknown>("/payments/active"),
+        api.get<unknown>("/categories/")
       ]);
-      setMerchants(m.merchants);
-      setItems(p.items.filter((i) => i.status === "ACTIVE"));
-      setCategoriesList(c.categories);
-      if (!postMerchantId() && m.merchants.length) setPostMerchantId(m.merchants[0].id);
-      if (!newMerchantCategory() && c.categories.length) setNewMerchantCategory(c.categories[0].name);
+
+      if (isUnauthorized(mRaw) || isUnauthorized(pRaw) || isUnauthorized(cRaw)) {
+        forceSignIn("Session expired. Please sign in again.");
+        return;
+      }
+
+      const m = mRaw as { merchants?: Merchant[] };
+      const p = pRaw as { items?: PaymentItem[] };
+      const c = cRaw as { categories?: { id: string | null; name: string }[] };
+
+      const nextMerchants = Array.isArray(m.merchants) ? m.merchants : [];
+      const nextItems = Array.isArray(p.items) ? p.items : [];
+      const nextCategories = Array.isArray(c.categories) ? c.categories : [];
+
+      setMerchants(nextMerchants);
+      setItems(nextItems.filter((i) => i.status === "ACTIVE"));
+      setCategoriesList(nextCategories);
+      if (!postMerchantId() && nextMerchants.length) setPostMerchantId(nextMerchants[0].id);
+      if (!newMerchantCategory() && nextCategories.length) setNewMerchantCategory(nextCategories[0].name);
     } catch (e) {
       if (publicToken) {
         setNotFound(true);
+        return;
+      }
+      if (hasLocalToken()) {
+        forceSignIn("Session restore failed. Please sign in again.");
         return;
       }
       showToast("error", e instanceof Error ? e.message : "SYNC_FAILED");
@@ -266,7 +319,10 @@ export default function Dashboard(props: DashboardProps) {
   };
 
   createEffect(() => {
-    if (!readOnly() && (auth.loading() || !auth.me())) return;
+    if (!readOnly()) {
+      const token = hasLocalToken();
+      if (!token && (auth.loading() || !auth.me())) return;
+    }
     void refresh({ showSpinner: true, showSkeleton: true });
     const ws = new WebSocket(`${wsBase}/ws`);
     let pingTimer: number | null = null;
@@ -308,6 +364,22 @@ export default function Dashboard(props: DashboardProps) {
       pollTimer = null;
       ws.close();
     };
+  });
+
+  createEffect(() => {
+    if (readOnly()) return;
+    if (adminChecked()) return;
+    if (!auth.me()) return;
+    setAdminChecked(true);
+    setAdminAccessLoading(true);
+    void api
+      .get<unknown>("/admin/access")
+      .then((res) => {
+        const ok = Boolean(res && typeof res === "object" && (res as { ok?: unknown }).ok === true);
+        setHasAdminAccess(ok);
+      })
+      .catch(() => setHasAdminAccess(false))
+      .finally(() => setAdminAccessLoading(false));
   });
 
   const categories = createMemo(() => groupByCategory(merchants()));
@@ -404,11 +476,11 @@ export default function Dashboard(props: DashboardProps) {
   const deactivate = async (id: string) => {
     if (readOnly()) return;
     setAction({ kind: "deactivate", id });
-    showToast("progress", "Deactivating…");
+    showToast("progress", "Taking down…");
     try {
       await api.postNoJson(`/payments/deactivate/${id}`, null);
       await refresh({ showSpinner: true, showSkeleton: false });
-      showToast("success", "Deactivated.");
+      showToast("success", "Taken down.");
     } catch (e) {
       showToast("error", e instanceof Error ? e.message : "DEACTIVATE_FAILED");
     } finally {
@@ -461,7 +533,7 @@ export default function Dashboard(props: DashboardProps) {
       </div>
     );
 
-  if (!readOnly() && auth.loading())
+  if (!readOnly() && auth.loading() && !hasLocalToken())
     return (
       <div class="shell">
         <div class="panel">
@@ -475,7 +547,7 @@ export default function Dashboard(props: DashboardProps) {
       </div>
     );
 
-  if (!readOnly() && !auth.me()) return null;
+  if (!readOnly() && !auth.me() && !hasLocalToken()) return null;
 
   return (
     <div class="shell" style="place-items: start center">
@@ -485,13 +557,17 @@ export default function Dashboard(props: DashboardProps) {
             <div class="title" style="margin: 0">
               <h1>{readOnly() ? "CUAN YUK!" : "Dashboard"}</h1>
             </div>
-            <div style="display: flex; gap: 10px; align-items: center">
+            <div
+              class="actionBar"
+              style={`grid-template-columns: repeat(${readOnly() ? 1 : adminAccessLoading() ? 3 : hasAdminAccess() ? 3 : 2}, minmax(0, 1fr))`}
+            >
               <button
                 class="btn"
                 onClick={() => void refresh({ showSpinner: true, showSkeleton: false })}
                 disabled={syncing() || Boolean(action())}
+                style="width: 100%"
               >
-                <span style="display: inline-flex; gap: 10px; align-items: center">
+                <span style="display: inline-flex; gap: 10px; align-items: center; justify-content: center; width: 100%">
                   {syncing() ? <span class="spinner" /> : null}
                   {!syncing() ? (
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -502,20 +578,24 @@ export default function Dashboard(props: DashboardProps) {
                   <span>{syncing() ? "Refreshing…" : "Refresh"}</span>
                 </span>
               </button>
-              <Show when={!readOnly() && isSuper()}>
-                <button class="btn" type="button" onClick={() => (window.location.href = "/admin")}>
-                  <span style="display: inline-flex; gap: 10px; align-items: center; font: inherit">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M12 1l9 4v6c0 5-3.8 9.8-9 12-5.2-2.2-9-7-9-12V5l9-4z" />
-                      <path d="M9 12l2 2 4-4" />
-                    </svg>
-                    <span>Admin</span>
-                  </span>
-                </button>
+              <Show when={!readOnly()}>
+                <Show when={!adminAccessLoading()} fallback={<div class="skeleton" style="height: 40px; border-radius: 14px" />}>
+                  <Show when={hasAdminAccess()}>
+                    <button class="btn" type="button" onClick={() => (window.location.href = "/admin")} style="width: 100%">
+                      <span style="display: inline-flex; gap: 10px; align-items: center; justify-content: center; width: 100%; font: inherit">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M12 1l9 4v6c0 5-3.8 9.8-9 12-5.2-2.2-9-7-9-12V5l9-4z" />
+                          <path d="M9 12l2 2 4-4" />
+                        </svg>
+                        <span>Admin</span>
+                      </span>
+                    </button>
+                  </Show>
+                </Show>
               </Show>
               <Show when={!readOnly()}>
-                <button class="btn" disabled={isAction("signout")} onClick={() => void signOut()}>
-                  <span style="display: inline-flex; gap: 10px; align-items: center">
+                <button class="btn" disabled={isAction("signout")} onClick={() => void signOut()} style="width: 100%">
+                  <span style="display: inline-flex; gap: 10px; align-items: center; justify-content: center; width: 100%">
                     {isAction("signout") ? <span class="spinner" /> : null}
                     {!isAction("signout") ? (
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -581,8 +661,17 @@ export default function Dashboard(props: DashboardProps) {
                     >
                       <For each={[1, 2, 3, 4, 5, 6, 7, 8, 9]}>
                         {() => (
-                          <div class="card skeleton" style={{ height: "92px" }}>
-                            <div class="cardInner" />
+                          <div class="card" style="padding: 0">
+                            <div class="cardInner" style="display: grid; gap: 10px">
+                              <div style="display: flex; gap: 10px; align-items: center">
+                                <div class="skeleton" style="width: 38px; height: 38px; border-radius: 14px" />
+                                <div style="flex: 1; min-width: 0; display: grid; gap: 8px">
+                                  <div class="skeleton" style="height: 14px; width: 62%; border-radius: 10px" />
+                                  <div class="skeleton" style="height: 12px; width: 42%; border-radius: 10px" />
+                                </div>
+                              </div>
+                              <div class="skeleton" style="height: 12px; width: 54%; border-radius: 10px" />
+                            </div>
                           </div>
                         )}
                       </For>
@@ -629,8 +718,16 @@ export default function Dashboard(props: DashboardProps) {
                                             src={m.pictureUrl ?? defaultMerchantImage(m.name)}
                                             alt=""
                                             style="width: 38px; height: 38px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.14); object-fit: cover; flex: 0 0 auto"
+                                            onError={(e) => {
+                                              const img = e.currentTarget;
+                                              if (img.dataset.fallback === "1") return;
+                                              img.dataset.fallback = "1";
+                                              img.src = defaultMerchantImage(m.name);
+                                            }}
                                           />
-                                          <div style="font-weight: 700; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                                          <div
+                                            style="font-weight: 700; letter-spacing: -0.01em; color: rgba(250,250,255,0.92); overflow: hidden; text-overflow: ellipsis; white-space: nowrap"
+                                          >
                                             {m.name}
                                           </div>
                                         </div>
@@ -683,15 +780,20 @@ export default function Dashboard(props: DashboardProps) {
                     </div>
                     <div class="field">
                       <label>Category</label>
-                      <select
-                        class="select"
-                        style="width: 100%"
-                        value={newMerchantCategory()}
-                        disabled={categoriesList().length === 0}
-                        onChange={(e) => setNewMerchantCategory(e.currentTarget.value)}
+                      <Show
+                        when={!loading() || categoriesList().length > 0}
+                        fallback={<div class="skeleton selectSkeleton" />}
                       >
-                        <For each={categoriesList()}>{(c) => <option value={c.name}>{c.name}</option>}</For>
-                      </select>
+                        <select
+                          class="select"
+                          style="width: 100%"
+                          value={newMerchantCategory()}
+                          disabled={categoriesList().length === 0}
+                          onChange={(e) => setNewMerchantCategory(e.currentTarget.value)}
+                        >
+                          <For each={categoriesList()}>{(c) => <option value={c.name}>{c.name}</option>}</For>
+                        </select>
+                      </Show>
                     </div>
                     <div class="field">
                       <label style="display: none">Merchant Picture</label>
@@ -737,9 +839,16 @@ export default function Dashboard(props: DashboardProps) {
                     </div>
                     <div class="field">
                       <label>Merchant</label>
-                      <select class="select" style="width: 100%" value={postMerchantId()} onChange={(e) => setPostMerchantId(e.currentTarget.value)}>
-                        <For each={merchants()}>{(m) => <option value={m.id}>{m.name}</option>}</For>
-                      </select>
+                      <Show when={!loading() || merchants().length > 0} fallback={<div class="skeleton selectSkeleton" />}>
+                        <select
+                          class="select"
+                          style="width: 100%"
+                          value={postMerchantId()}
+                          onChange={(e) => setPostMerchantId(e.currentTarget.value)}
+                        >
+                          <For each={merchants()}>{(m) => <option value={m.id}>{m.name}</option>}</For>
+                        </select>
+                      </Show>
                     </div>
                     <div class="field">
                       <label>Expiration Time (default: 12H)</label>
@@ -833,8 +942,15 @@ export default function Dashboard(props: DashboardProps) {
                           >
                             <For each={[1, 2, 3, 4, 5, 6]}>
                               {() => (
-                                <div class="card skeleton" style={{ height: "160px" }}>
-                                  <div class="cardInner" />
+                                <div class="card" style="padding: 0">
+                                  <div class="cardInner" style="display: grid; gap: 10px">
+                                    <div style="display: flex; gap: 10px; align-items: baseline; justify-content: space-between">
+                                      <div class="skeleton" style="height: 16px; width: 46%; border-radius: 10px" />
+                                      <div class="skeleton" style="height: 12px; width: 34%; border-radius: 10px" />
+                                    </div>
+                                    <div class="skeleton" style="height: 44px; width: 100%; border-radius: 14px" />
+                                    <div class="skeleton" style="height: 44px; width: 100%; border-radius: 14px" />
+                                  </div>
                                 </div>
                               )}
                             </For>
@@ -906,7 +1022,7 @@ export default function Dashboard(props: DashboardProps) {
                                 <button class="btn btnWide" disabled={Boolean(action())} onClick={() => void deactivate(it.id)}>
                                   <span style="display: inline-flex; gap: 10px; align-items: center">
                                     {isAction("deactivate", it.id) ? <span class="spinner" /> : null}
-                                    <span>{isAction("deactivate", it.id) ? "Deactivating…" : "Deactivate"}</span>
+                                    <span>{isAction("deactivate", it.id) ? "Taking Down…" : "Take Down"}</span>
                                   </span>
                                 </button>
                               </Show>

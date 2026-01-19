@@ -189,7 +189,34 @@ export default function AdminIp() {
                   </div>
                 </div>
 
-                <Show when={filtered().length} fallback={<div style="color: rgba(250,250,255,0.7)">No matches.</div>}>
+                <Show
+                  when={filtered().length}
+                  fallback={
+                    loading() ? (
+                      <div style="display: grid; gap: 10px">
+                        <For each={[1, 2, 3, 4, 5, 6]}>
+                          {() => (
+                            <div class="card" style="padding: 0">
+                              <div class="cardInner" style="display: grid; gap: 10px">
+                                <div style="display: flex; gap: 10px; align-items: baseline; justify-content: space-between">
+                                  <div class="skeleton" style="height: 14px; width: 46%; border-radius: 10px" />
+                                  <div class="skeleton" style="height: 22px; width: 92px; border-radius: 999px" />
+                                </div>
+                                <div class="skeleton" style="height: 12px; width: 62%; border-radius: 10px" />
+                                <div style="display: flex; gap: 10px; flex-wrap: wrap">
+                                  <div class="skeleton" style="height: 38px; width: 92px; border-radius: 14px" />
+                                  <div class="skeleton" style="height: 38px; width: 110px; border-radius: 14px" />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </For>
+                      </div>
+                    ) : (
+                      <div style="color: rgba(250,250,255,0.7)">No matches.</div>
+                    )
+                  }
+                >
                   <div class="ipListScroll">
                     <div style="display: grid; gap: 10px">
                       <For each={paged()}>
@@ -199,9 +226,9 @@ export default function AdminIp() {
                         >
                           <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
                             <div style="font-weight: 700; letter-spacing: -0.01em">{e.ip}</div>
-                            <div style="color: rgba(250,250,255,0.68); font-size: 13px">
+                            <span class={`statusPill ${e.status === "ACTIVE" ? "statusActive" : "statusInactive"}`}>
                               {e.status === "ACTIVE" ? "Whitelist" : "Blacklist"}
-                            </div>
+                            </span>
                           </div>
                           <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.4">{e.note ?? "—"}</div>
                           <div style="display: flex; gap: 10px; flex-wrap: wrap">
@@ -219,8 +246,12 @@ export default function AdminIp() {
                             <button class="btn" disabled={saving()} onClick={() => void api.post("/admin/ips", { ip: e.ip, status: "ACTIVE", note: e.note ?? undefined }).then(refresh)}>
                               Whitelist
                             </button>
-                            <button class="btn" disabled={saving()} onClick={() => void api.post("/admin/ips", { ip: e.ip, status: "INACTIVE", note: e.note ?? undefined }).then(refresh)}>
-                              Backlist
+                            <button
+                              class="btn"
+                              disabled={saving()}
+                              onClick={() => void api.post("/admin/ips", { ip: e.ip, status: "INACTIVE", note: e.note ?? undefined }).then(refresh)}
+                            >
+                              Blacklist
                             </button>
                           </div>
                         </div>

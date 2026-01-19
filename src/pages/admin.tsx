@@ -341,7 +341,34 @@ export default function Admin() {
                       </div>
                     </div>
 
-                    <Show when={ipFiltered().length} fallback={<div style="color: rgba(250,250,255,0.7)">No matches.</div>}>
+                    <Show
+                      when={ipFiltered().length}
+                      fallback={
+                        ipLoading() ? (
+                          <div style="display: grid; gap: 10px">
+                            <For each={[1, 2, 3, 4, 5, 6]}>
+                              {() => (
+                                <div class="card" style="padding: 0">
+                                  <div class="cardInner" style="display: grid; gap: 10px">
+                                    <div style="display: flex; gap: 10px; align-items: baseline; justify-content: space-between">
+                                      <div class="skeleton" style="height: 14px; width: 46%; border-radius: 10px" />
+                                      <div class="skeleton" style="height: 22px; width: 92px; border-radius: 999px" />
+                                    </div>
+                                    <div class="skeleton" style="height: 12px; width: 62%; border-radius: 10px" />
+                                    <div style="display: flex; gap: 10px; flex-wrap: wrap">
+                                      <div class="skeleton" style="height: 38px; width: 92px; border-radius: 14px" />
+                                      <div class="skeleton" style="height: 38px; width: 110px; border-radius: 14px" />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </For>
+                          </div>
+                        ) : (
+                          <div style="color: rgba(250,250,255,0.7)">No matches.</div>
+                        )
+                      }
+                    >
                       <div class="ipListScroll">
                         <div style="display: grid; gap: 10px">
                           <For each={ipPaged()}>
@@ -349,9 +376,9 @@ export default function Admin() {
                               <div style="border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 12px; display: grid; gap: 8px">
                                 <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
                                   <div style="font-weight: 700; letter-spacing: -0.01em">{e.ip}</div>
-                                  <div style="color: rgba(250,250,255,0.68); font-size: 13px">
+                                  <span class={`statusPill ${e.status === "ACTIVE" ? "statusActive" : "statusInactive"}`}>
                                     {e.status === "ACTIVE" ? "Whitelist" : "Blacklist"}
-                                  </div>
+                                  </span>
                                 </div>
                                 <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.4">{e.note ?? "—"}</div>
                                 <div style="display: flex; gap: 10px; flex-wrap: wrap">
@@ -523,7 +550,37 @@ export default function Admin() {
                       </div>
                     </div>
 
-                    <Show when={userFiltered().length} fallback={<div style="color: rgba(250,250,255,0.7)">No matches.</div>}>
+                    <Show
+                      when={userFiltered().length}
+                      fallback={
+                        userLoading() ? (
+                          <div style="display: grid; gap: 10px">
+                            <For each={[1, 2, 3, 4, 5, 6]}>
+                              {() => (
+                                <div class="card" style="padding: 0">
+                                  <div class="cardInner" style="display: grid; gap: 10px">
+                                    <div style="display: flex; gap: 10px; align-items: baseline; justify-content: space-between">
+                                      <div class="skeleton" style="height: 14px; width: 58%; border-radius: 10px" />
+                                      <div style="display: inline-flex; gap: 8px">
+                                        <div class="skeleton" style="height: 22px; width: 76px; border-radius: 999px" />
+                                        <div class="skeleton" style="height: 22px; width: 86px; border-radius: 999px" />
+                                      </div>
+                                    </div>
+                                    <div class="skeleton" style="height: 12px; width: 40%; border-radius: 10px" />
+                                    <div style="display: flex; gap: 10px; flex-wrap: wrap">
+                                      <div class="skeleton" style="height: 38px; width: 76px; border-radius: 14px" />
+                                      <div class="skeleton" style="height: 38px; width: 110px; border-radius: 14px" />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </For>
+                          </div>
+                        ) : (
+                          <div style="color: rgba(250,250,255,0.7)">No matches.</div>
+                        )
+                      }
+                    >
                       <div class="ipListScroll">
                         <div style="display: grid; gap: 10px">
                           <For each={userPaged()}>
@@ -531,8 +588,21 @@ export default function Admin() {
                               <div style="border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 12px; display: grid; gap: 8px">
                                 <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
                                   <div style="font-weight: 750; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis">{u.email}</div>
-                                  <div style="color: rgba(250,250,255,0.68); font-size: 13px">
-                                    {u.role} • {u.status}
+                                  <div style="display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap">
+                                    <span class={`statusPill ${u.role === "SUPER" ? "statusPending" : "statusInactive"}`}>{u.role}</span>
+                                    <span
+                                      class={`statusPill ${
+                                        u.status === "ACTIVE"
+                                          ? "statusActive"
+                                          : u.status === "INACTIVE"
+                                            ? "statusInactive"
+                                            : u.status === "PENDING"
+                                              ? "statusPending"
+                                              : "statusDeleted"
+                                      }`}
+                                    >
+                                      {u.status}
+                                    </span>
                                   </div>
                                 </div>
                                 <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.4">
@@ -547,7 +617,7 @@ export default function Admin() {
                                     disabled={userSaving() || (u.status !== "ACTIVE" && u.status !== "INACTIVE")}
                                     onClick={() => void setUserStatus(u, u.status === "ACTIVE" ? "INACTIVE" : "ACTIVE")}
                                   >
-                                    {u.status === "ACTIVE" ? "Disable" : "Enable"}
+                                    {u.status === "ACTIVE" ? "Deactivate" : "Activate"}
                                   </button>
                                 </div>
                               </div>

@@ -23,14 +23,26 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
   const [loading, setLoading] = createSignal(true);
 
   const fetchMe = async () => {
+    let hadToken = false;
+    try {
+      hadToken = Boolean(localStorage.getItem("auth_token"));
+    } catch {}
     try {
       const res = await api.get<{ ok: boolean; user?: User; shareUrl?: string }>("/auth/me");
       if (!res.ok) {
         setMe(null);
         setShareUrl(null);
-        try {
-          localStorage.removeItem("auth_token");
-        } catch {}
+        if (hadToken) {
+          try {
+            localStorage.removeItem("auth_token");
+          } catch {}
+          try {
+            sessionStorage.setItem(
+              "flash_toast",
+              JSON.stringify({ kind: "error", message: "Session expired. Please sign in again." })
+            );
+          } catch {}
+        }
         return;
       }
       setMe(res.user ?? null);
@@ -38,14 +50,64 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
     } catch {
       setMe(null);
       setShareUrl(null);
+      if (hadToken) {
+        try {
+          localStorage.removeItem("auth_token");
+        } catch {}
+        try {
+          sessionStorage.setItem(
+            "flash_toast",
+            JSON.stringify({ kind: "error", message: "Session restore failed. Please sign in again." })
+          );
+        } catch {}
+      }
     }
   };
 
   onMount(() => {
     void (async () => {
-      setLoading(true);
-      await fetchMe();
-      setLoading(false);
+      try {
+        setLoading(true);
+        let hadToken = false;
+        try {
+          hadToken = Boolean(localStorage.getItem("auth_token"));
+        } catch {}
+        const path = location.pathname;
+        const isPublic =
+          ["/sign-in", "/sign-up", "/verify-email"].includes(path) ||
+          path.startsWith("/reset-password/") ||
+          path.startsWith("/share/");
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        timer =
+          !isPublic || hadToken
+            ? globalThis.setTimeout(() => {
+                if (!loading()) return;
+                setMe(null);
+                setShareUrl(null);
+                setLoading(false);
+                if (hadToken) {
+                  try {
+                    localStorage.removeItem("auth_token");
+                  } catch {}
+                  try {
+                    sessionStorage.setItem(
+                      "flash_toast",
+                      JSON.stringify({ kind: "error", message: "Session restore timed out. Please sign in again." })
+                    );
+                  } catch {}
+                }
+                if (!isPublic) navigate("/sign-in", { replace: true });
+              }, 25_000)
+            : null;
+
+        try {
+          await fetchMe();
+        } finally {
+          if (timer) globalThis.clearTimeout(timer);
+        }
+      } finally {
+        setLoading(false);
+      }
     })();
   });
 
