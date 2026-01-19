@@ -18,7 +18,25 @@ type PaymentItem = {
   merchant: { id: string; name: string; category: string };
 };
 
-const wsBase = import.meta.env.VITE_WS_BASE_URL ?? "ws://localhost:3001";
+const computeWsBase = () => {
+  const explicit = import.meta.env.VITE_WS_BASE_URL;
+  const isHttpsPage = typeof window !== "undefined" && window.location?.protocol === "https:";
+  if (explicit) {
+    if (isHttpsPage && explicit.startsWith("ws://")) return `wss://${explicit.slice("ws://".length)}`;
+    return explicit;
+  }
+
+  const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
+  try {
+    const u = new URL(apiBase);
+    const wsProtocol = u.protocol === "https:" ? "wss:" : "ws:";
+    return `${wsProtocol}//${u.host}`;
+  } catch {
+    return isHttpsPage ? "wss://localhost:3001" : "ws://localhost:3001";
+  }
+};
+
+const wsBase = computeWsBase();
 
 const groupByCategory = (merchants: Merchant[]) => {
   const map = new Map<string, Merchant[]>();
@@ -324,32 +342,40 @@ export default function Dashboard(props: DashboardProps) {
       if (!token && (auth.loading() || !auth.me())) return;
     }
     void refresh({ showSpinner: true, showSkeleton: true });
-    const ws = new WebSocket(`${wsBase}/ws`);
+    const wsUrl = `${wsBase.replace(/\/$/, "")}/ws`;
+    let ws: WebSocket | null = null;
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch {
+      ws = null;
+    }
     let pingTimer: number | null = null;
     let pollTimer: number | null = null;
     let lastSoftSyncAt = 0;
-    ws.addEventListener("message", (ev) => {
-      try {
-        const msg = JSON.parse(String(ev.data));
-        if (msg?.type === "items:changed") {
-          const now = Date.now();
-          if (now - lastSoftSyncAt < 10_000) return;
-          lastSoftSyncAt = now;
-          void refresh({ showSpinner: true, showSkeleton: false });
-        }
-      } catch {}
-    });
-    ws.addEventListener("open", () => {
-      pingTimer = window.setInterval(() => {
+    if (ws) {
+      ws.addEventListener("message", (ev) => {
         try {
-          ws.send(JSON.stringify({ type: "ping" }));
+          const msg = JSON.parse(String(ev.data));
+          if (msg?.type === "items:changed") {
+            const now = Date.now();
+            if (now - lastSoftSyncAt < 10_000) return;
+            lastSoftSyncAt = now;
+            void refresh({ showSpinner: true, showSkeleton: false });
+          }
         } catch {}
-      }, 10000);
-    });
-    ws.addEventListener("close", () => {
-      if (pingTimer) window.clearInterval(pingTimer);
-      pingTimer = null;
-    });
+      });
+      ws.addEventListener("open", () => {
+        pingTimer = window.setInterval(() => {
+          try {
+            ws?.send(JSON.stringify({ type: "ping" }));
+          } catch {}
+        }, 10000);
+      });
+      ws.addEventListener("close", () => {
+        if (pingTimer) window.clearInterval(pingTimer);
+        pingTimer = null;
+      });
+    }
     pollTimer = window.setInterval(() => {
       if (action()) return;
       const now = Date.now();
@@ -362,14 +388,16 @@ export default function Dashboard(props: DashboardProps) {
       pingTimer = null;
       if (pollTimer) window.clearInterval(pollTimer);
       pollTimer = null;
-      ws.close();
+      try {
+        ws?.close();
+      } catch {}
     };
   });
 
   createEffect(() => {
     if (readOnly()) return;
     if (adminChecked()) return;
-    if (!auth.me()) return;
+    if (!hasLocalToken()) return;
     setAdminChecked(true);
     setAdminAccessLoading(true);
     void api
