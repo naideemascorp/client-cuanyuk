@@ -11,6 +11,12 @@ export type ToastState = {
 } | null;
 
 export function Toast(props: { toast: ToastState; onClose: () => void }) {
+  const titleFor = (kind: ToastKind) => {
+    if (kind === "progress") return "Working";
+    if (kind === "success") return "Success";
+    return "Error";
+  };
+
   return (
     <Show when={props.toast} keyed>
       {(t) => (
@@ -53,7 +59,10 @@ export function Toast(props: { toast: ToastState; onClose: () => void }) {
                   </Show>
                 </Show>
               </div>
-              <div class="toastMsg">{t.message}</div>
+              <div class="toastText">
+                <div class="toastTitle">{titleFor(t.kind)}</div>
+                <div class="toastBody">{t.message}</div>
+              </div>
             </div>
             <button class="toastClose" type="button" onClick={props.onClose} aria-label="Close">
               <svg

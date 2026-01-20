@@ -120,13 +120,39 @@ export function ImageDropzone(props: {
               fallback={
                 <div class="dropzoneHint">
                   <div class="dropzoneTitle">Drag & drop an image here</div>
-                  <div class="dropzoneSub">or tap to browse • {supportedText()}</div>
+                  <div class="dropzoneSub">PNG/JPG/GIF/WEBP • {supportedText()}</div>
+                  <div class="dropzoneActions">
+                    <button
+                      class="dropzoneBrowseBtn"
+                      type="button"
+                      disabled={props.disabled}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        inputEl?.click();
+                      }}
+                    >
+                      Browse files
+                    </button>
+                  </div>
                 </div>
               }
             >
               <div class="dropzoneFile">
                 <div class="dropzoneFileName">{props.file?.name}</div>
                 <div class="dropzoneFileMeta">{supportedText()}</div>
+                <div class="dropzoneActions">
+                  <button
+                    class="dropzoneBrowseBtn dropzoneBrowseBtnSecondary"
+                    type="button"
+                    disabled={props.disabled}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      inputEl?.click();
+                    }}
+                  >
+                    Change file
+                  </button>
+                </div>
               </div>
             </Show>
           </div>

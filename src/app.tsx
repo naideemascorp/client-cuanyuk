@@ -1,6 +1,7 @@
 import { Footer } from "@/components/footer";
 import { ToastHost } from "@/components/toast-host";
 import { AuthProvider } from "@/state/auth";
+import { NotificationsProvider } from "@/state/notifications";
 import { ToastProvider } from "@/state/toast";
 import { Route, Router, useLocation, useNavigate } from "@solidjs/router";
 import { createEffect, lazy } from "solid-js";
@@ -33,12 +34,14 @@ export const App = () => (
     root={(props) => (
       <ToastProvider>
         <AuthProvider>
-          <div class="appRoot">
-            <RedirectShim />
-            <div class="appMain">{props.children}</div>
-            <Footer />
-            <ToastHost />
-          </div>
+          <NotificationsProvider>
+            <div class="appRoot">
+              <RedirectShim />
+              <div class="appMain">{props.children}</div>
+              <Footer />
+              <ToastHost />
+            </div>
+          </NotificationsProvider>
         </AuthProvider>
       </ToastProvider>
     )}

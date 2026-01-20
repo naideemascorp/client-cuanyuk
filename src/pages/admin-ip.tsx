@@ -6,7 +6,7 @@ import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 
 type IpEntry = {
   id: string;
-  deviceId: string;
+  ip: string;
   note: string | null;
   status: "ACTIVE" | "INACTIVE" | "PENDING" | "DELETED";
 };
@@ -14,6 +14,7 @@ type IpEntry = {
 export default function AdminIp() {
   const auth = useAuth();
   const navigate = useNavigate();
+  let searchEl: HTMLInputElement | undefined;
 
   const [entries, setEntries] = createSignal<IpEntry[]>([]);
   const [ip, setIp] = createSignal("");
@@ -43,7 +44,7 @@ export default function AdminIp() {
   const refresh = async () => {
     setLoading(true);
     try {
-      const res = await api.get<{ entries: IpEntry[] }>("/admin/devices");
+      const res = await api.get<{ entries: IpEntry[] }>("/admin/ips");
       setEntries(res.entries ?? []);
     } catch (e) {
       showToast("error", e instanceof Error ? e.message : "LOAD_FAILED");
@@ -67,7 +68,7 @@ export default function AdminIp() {
       if (!statusOk) return false;
       if (!q) return true;
       const noteText = (e.note ?? "").toLowerCase();
-      return e.deviceId.toLowerCase().includes(q) || noteText.includes(q);
+      return e.ip.toLowerCase().includes(q) || noteText.includes(q);
     });
   });
 
@@ -109,8 +110,8 @@ export default function AdminIp() {
     setSaving(true);
     showToast("progress", "Submitting…");
     try {
-      await api.post("/admin/devices", {
-        deviceId: ipVal,
+      await api.post("/admin/ips", {
+        ip: ipVal,
         status: status(),
         note: note().trim() || undefined,
       });
@@ -147,14 +148,14 @@ export default function AdminIp() {
           <div class="grid">
             <div class="card" style="grid-column: span 5">
               <div class="cardInner" style="display: grid; gap: 12px">
-                <div style="font-weight: 650; letter-spacing: -0.01em">Add / Update Device</div>
+                <div style="font-weight: 650; letter-spacing: -0.01em">Create/Update IP</div>
                 <div class="field">
-                  <label for="ip_address">Device ID</label>
+                  <label for="ip_address">IP Address</label>
                   <input
                     id="ip_address"
                     value={ip()}
                     onInput={(e) => setIp(e.currentTarget.value)}
-                    placeholder="e.g. 7f06b84f-10c9-0ace-952e-5cf24d5ad4aa"
+                    placeholder="e.g. 203.0.113.10"
                   />
                 </div>
                 <div class="field">
@@ -195,7 +196,7 @@ export default function AdminIp() {
             <div class="card" style="grid-column: span 7">
               <div class="cardInner" style="display: grid; gap: 12px">
                 <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
-                  <div style="font-weight: 650; letter-spacing: -0.01em">Device Lists</div>
+                  <div style="font-weight: 650; letter-spacing: -0.01em">IP Lists</div>
                   <button
                     class="btn"
                     type="button"
@@ -229,11 +230,20 @@ export default function AdminIp() {
                     <div class="inputIconWrap">
                       <input
                         id="ip_search"
+                        ref={(el) => {
+                          searchEl = el;
+                        }}
                         value={query()}
                         onInput={(e) => setQuery(e.currentTarget.value)}
-                        placeholder="Search device ID or remarks"
+                        placeholder="Search IP or remarks"
                       />
-                      <span class="inputIcon" aria-hidden="true">
+                      <button
+                        class="inputIconBtn"
+                        type="button"
+                        aria-label="Search"
+                        disabled={query().trim().length === 0}
+                        onClick={() => searchEl?.focus()}
+                      >
                         <svg
                           width="16"
                           height="16"
@@ -246,7 +256,7 @@ export default function AdminIp() {
                           <circle cx="11" cy="11" r="7" />
                           <path d="M21 21l-4.3-4.3" />
                         </svg>
-                      </span>
+                      </button>
                     </div>
                   </div>
                   <div class="field" style="margin: 0">
@@ -315,13 +325,11 @@ export default function AdminIp() {
                         {(e) => (
                           <div style="border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 12px; display: grid; gap: 8px">
                             <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
-                              <div style="font-weight: 700; letter-spacing: -0.01em">
-                                {e.deviceId}
-                              </div>
+                              <div style="font-weight: 700; letter-spacing: -0.01em">{e.ip}</div>
                               <span
                                 class={`statusPill ${e.status === "ACTIVE" ? "statusActive" : "statusInactive"}`}
                               >
-                                {e.status === "ACTIVE" ? "Whitelist" : "Blacklist"}
+                                {e.status === "ACTIVE" ? "Whitelisted" : "Blacklisted"}
                               </span>
                             </div>
                             <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.4">
@@ -333,12 +341,12 @@ export default function AdminIp() {
                                 type="button"
                                 disabled={saving()}
                                 onClick={() => {
-                                  setIp(e.deviceId);
+                                  setIp(e.ip);
                                   setNote(e.note ?? "");
                                   setStatus(e.status === "ACTIVE" ? "ACTIVE" : "INACTIVE");
                                 }}
                               >
-                                Edit
+                                Update
                               </button>
                               <button
                                 class="btn"
@@ -346,8 +354,8 @@ export default function AdminIp() {
                                 disabled={saving()}
                                 onClick={() =>
                                   void api
-                                    .post("/admin/devices", {
-                                      deviceId: e.deviceId,
+                                    .post("/admin/ips", {
+                                      ip: e.ip,
                                       status: "ACTIVE",
                                       note: e.note ?? undefined,
                                     })
@@ -362,8 +370,8 @@ export default function AdminIp() {
                                 disabled={saving()}
                                 onClick={() =>
                                   void api
-                                    .post("/admin/devices", {
-                                      deviceId: e.deviceId,
+                                    .post("/admin/ips", {
+                                      ip: e.ip,
                                       status: "INACTIVE",
                                       note: e.note ?? undefined,
                                     })

@@ -24,6 +24,7 @@ export default function SignIn() {
   const [nowMs, setNowMs] = createSignal(Date.now());
   const [resetSuccessCount, setResetSuccessCount] = createSignal(0);
   const [detectedDeviceId, setDetectedDeviceId] = createSignal<string | null>(null);
+  const [detectedIp, setDetectedIp] = createSignal<string | null>(null);
   const [touchedIdentifier, setTouchedIdentifier] = createSignal(false);
   const [touchedPassword, setTouchedPassword] = createSignal(false);
   const identifierError = createMemo(() =>
@@ -33,8 +34,11 @@ export default function SignIn() {
     touchedPassword() && password().trim().length === 0 ? "Please fill in this field." : null,
   );
   const [signupAllowed] = createResource(async () => {
-    const res = await api.get<{ allowed: boolean; deviceId?: string }>("/auth/signup-allowed");
+    const res = await api.get<{ allowed: boolean; deviceId?: string; ip?: string }>(
+      "/auth/signup-allowed",
+    );
     setDetectedDeviceId(res.deviceId ?? null);
+    setDetectedIp(res.ip ?? null);
     return res.allowed;
   });
 
@@ -365,9 +369,11 @@ export default function SignIn() {
                   </div>
                   <div class="needAccessHint">
                     Keep it short. If it’s urgent, say so—we’ll handle it.
-                    {!signupAllowed.loading && !signupAllowed() && detectedDeviceId()
-                      ? ` (Detected device: ${detectedDeviceId()})`
-                      : ""}
+                    {!signupAllowed.loading && !signupAllowed() && detectedIp()
+                      ? ` (Detected IP: ${detectedIp()})`
+                      : !signupAllowed.loading && !signupAllowed() && detectedDeviceId()
+                        ? ` (Detected device: ${detectedDeviceId()})`
+                        : ""}
                   </div>
                 </div>
               </div>

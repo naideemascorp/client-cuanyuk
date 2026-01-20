@@ -118,39 +118,42 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
 
   const signIn = async (identifier: string, password: string) => {
     setLoading(true);
-    const res = await api.post<{ ok: boolean; token?: string; user?: User; code?: string }>(
-      "/auth/signin",
-      {
-        identifier,
-        password,
-      },
-    );
-    if (!res.ok) {
+    try {
+      const res = await api.post<{ ok: boolean; token?: string; user?: User; code?: string }>(
+        "/auth/signin",
+        {
+          identifier,
+          password,
+        },
+      );
+      if (!res.ok) throw new Error(res.code ?? "SIGNIN_FAILED");
+      if (res.token) {
+        try {
+          localStorage.setItem("auth_token", res.token);
+        } catch {}
+      }
+      await fetchMe();
+      toast.showToast("success", "Signed in.");
+      navigate("/", { replace: true });
+    } finally {
       setLoading(false);
-      throw new Error(res.code ?? "SIGNIN_FAILED");
     }
-    if (res.token) {
-      try {
-        localStorage.setItem("auth_token", res.token);
-      } catch {}
-    }
-    await fetchMe();
-    setLoading(false);
-    toast.showToast("success", "Signed in.");
-    navigate("/", { replace: true });
   };
 
   const signOut = async () => {
     setLoading(true);
-    await api.postNoJson("/auth/signout", null);
-    setMe(null);
-    setShareUrl(null);
-    setLoading(false);
     try {
-      localStorage.removeItem("auth_token");
-    } catch {}
-    toast.showToast("success", "Signed out.");
-    navigate("/sign-in", { replace: true });
+      await api.postNoJson("/auth/signout", null);
+      setMe(null);
+      setShareUrl(null);
+      try {
+        localStorage.removeItem("auth_token");
+      } catch {}
+      toast.showToast("success", "Signed out.");
+      navigate("/sign-in", { replace: true });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const value: AuthState = { me, shareUrl, loading, signIn, signOut };

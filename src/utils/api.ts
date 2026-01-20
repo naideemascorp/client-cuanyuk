@@ -66,8 +66,27 @@ const request = async <T>(
       timeoutPromise,
     ]);
     const text = await res.text();
+    if (!res.ok) {
+      const trimmed = text?.trim() ?? "";
+      if (trimmed) {
+        try {
+          const parsed = JSON.parse(trimmed) as { code?: unknown; message?: unknown } | null;
+          if (parsed && typeof parsed === "object") {
+            const code = typeof parsed.code === "string" ? parsed.code : null;
+            const message = typeof parsed.message === "string" ? parsed.message : null;
+            throw new Error(code || message || trimmed);
+          }
+        } catch {}
+        throw new Error(trimmed);
+      }
+      throw new Error(`HTTP_${res.status}`);
+    }
     if (!text) return {} as T;
-    return JSON.parse(text) as T;
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      throw new Error(text.trim() || "INVALID_RESPONSE");
+    }
   } finally {
     if (timeoutId) globalThis.clearTimeout(timeoutId);
   }

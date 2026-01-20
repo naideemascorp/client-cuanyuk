@@ -1,5 +1,6 @@
 import { ImageDropzone } from "@/components/image-dropzone";
 import { Modal } from "@/components/modal";
+import { NotificationBell } from "@/components/notification-bell";
 import type { ToastKind } from "@/components/toast";
 import { useAuth } from "@/state/auth";
 import { useToast } from "@/state/toast";
@@ -100,11 +101,43 @@ export default function Dashboard(props: DashboardProps) {
   let refreshInFlight: Promise<void> | null = null;
   const [openItemId, setOpenItemId] = createSignal<string | null>(null);
   const [nowMs, setNowMs] = createSignal(Date.now());
+  const initialDashLoading = (() => {
+    try {
+      return sessionStorage.getItem("dash_loading") === "1";
+    } catch {
+      return false;
+    }
+  })();
+  const [dashLoadingOverlay, setDashLoadingOverlay] = createSignal(initialDashLoading);
+  const [dashLoadingStarted, setDashLoadingStarted] = createSignal(false);
+  createEffect(() => {
+    if (!dashLoadingOverlay()) return;
+    const guardId = globalThis.setTimeout(() => {
+      setDashLoadingOverlay(false);
+      try {
+        sessionStorage.removeItem("dash_loading");
+      } catch {}
+    }, 3500);
+    if (loading()) setDashLoadingStarted(true);
+    if (dashLoadingStarted() && !loading() && !syncing()) {
+      setDashLoadingOverlay(false);
+      try {
+        sessionStorage.removeItem("dash_loading");
+      } catch {}
+    }
+    return () => globalThis.clearTimeout(guardId);
+  });
 
   const readOnly = createMemo(() => Boolean(publicToken));
   const [adminAccessLoading, setAdminAccessLoading] = createSignal(false);
   const [hasAdminAccess, setHasAdminAccess] = createSignal(false);
   const [adminChecked, setAdminChecked] = createSignal(false);
+  createEffect(() => {
+    if (readOnly()) return;
+    if (auth.loading()) return;
+    if (auth.me()) return;
+    navigate("/sign-in", { replace: true });
+  });
   const hasLocalToken = () => {
     try {
       return Boolean(localStorage.getItem("auth_token"));
@@ -358,10 +391,7 @@ export default function Dashboard(props: DashboardProps) {
   };
 
   createEffect(() => {
-    if (!readOnly()) {
-      const token = hasLocalToken();
-      if (!token && (auth.loading() || !auth.me())) return;
-    }
+    if (!readOnly() && (auth.loading() || !auth.me())) return;
     void refresh({ showSpinner: true, showSkeleton: true });
     const wsUrl = `${wsBase.replace(/\/$/, "")}/ws`;
     let ws: WebSocket | null = null;
@@ -432,6 +462,8 @@ export default function Dashboard(props: DashboardProps) {
   });
 
   const categories = createMemo(() => groupByCategory(merchants()));
+  const hasAnyCategories = createMemo(() => categoriesList().length > 0);
+  const hasAnyMerchants = createMemo(() => merchants().length > 0);
   const isCategoryNameValid = createMemo(() => newCategoryName().trim().length >= 2);
   const categoryNameError = createMemo(() =>
     touchedCategoryName() && !isCategoryNameValid() ? "Please fill in this field." : null,
@@ -452,8 +484,9 @@ export default function Dashboard(props: DashboardProps) {
       : null,
   );
 
+  const paymentAmountRaw = createMemo(() => postTotalAmount().replace(/[^\d]/g, ""));
   const paymentAmount = createMemo(() => {
-    const amountRaw = postTotalAmount().replaceAll(/[^\d]/g, "");
+    const amountRaw = paymentAmountRaw();
     return amountRaw ? Number(amountRaw) : Number.NaN;
   });
   const isPaymentAmountValid = createMemo(
@@ -479,10 +512,10 @@ export default function Dashboard(props: DashboardProps) {
     touchedPaymentMerchant() && !isPaymentMerchantValid() ? "Please choose a value." : null,
   );
   const paymentAmountError = createMemo(() =>
-    touchedPaymentAmount() && !isPaymentAmountValid() ? "Please fill in this field." : null,
+    touchedPaymentAmount() && paymentAmountRaw().length === 0 ? "Please fill in this field." : null,
   );
   const paymentLinkError = createMemo(() =>
-    touchedPaymentLink() && postKind() === "LINK" && !isPaymentLinkValid()
+    touchedPaymentLink() && postKind() === "LINK" && postLink().trim().length === 0
       ? "Please fill in this field."
       : null,
   );
@@ -655,6 +688,67 @@ export default function Dashboard(props: DashboardProps) {
   const isSuper = createMemo(() => auth.me()?.role === "SUPER");
   const totalLinks = createMemo(() => items().filter((i) => i.kind === "LINK").length);
   const totalQris = createMemo(() => items().filter((i) => i.kind === "QRIS").length);
+  const [layoutMode, setLayoutMode] = createSignal<"CATEGORY" | "MERCHANT" | "LINK" | "QRIS">(
+    "CATEGORY",
+  );
+
+  const merchantLayoutPageSize = 20;
+  const [merchantLayoutPage, setMerchantLayoutPage] = createSignal(1);
+  const merchantsSorted = createMemo(() =>
+    merchants()
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  );
+  const merchantLayoutTotalPages = createMemo(() =>
+    Math.max(1, Math.ceil(merchantsSorted().length / merchantLayoutPageSize)),
+  );
+  createEffect(() => {
+    const p = merchantLayoutPage();
+    const tp = merchantLayoutTotalPages();
+    if (p > tp) setMerchantLayoutPage(tp);
+    if (p < 1) setMerchantLayoutPage(1);
+  });
+  const merchantsPagedForLayout = createMemo(() => {
+    const start = (merchantLayoutPage() - 1) * merchantLayoutPageSize;
+    return merchantsSorted().slice(start, start + merchantLayoutPageSize);
+  });
+
+  const itemLayoutPageSize = 20;
+  const [itemLayoutPage, setItemLayoutPage] = createSignal(1);
+  const itemsSorted = createMemo(() =>
+    items()
+      .slice()
+      .sort((a, b) => (b.createdDate ?? "").localeCompare(a.createdDate ?? "")),
+  );
+  const itemsByLayout = createMemo(() => {
+    const mode = layoutMode();
+    if (mode === "LINK") return itemsSorted().filter((i) => i.kind === "LINK");
+    if (mode === "QRIS") return itemsSorted().filter((i) => i.kind === "QRIS");
+    return [];
+  });
+  const itemLayoutTotalPages = createMemo(() =>
+    Math.max(1, Math.ceil(itemsByLayout().length / itemLayoutPageSize)),
+  );
+  createEffect(() => {
+    const p = itemLayoutPage();
+    const tp = itemLayoutTotalPages();
+    if (p > tp) setItemLayoutPage(tp);
+    if (p < 1) setItemLayoutPage(1);
+  });
+  const itemsPagedForLayout = createMemo(() => {
+    const start = (itemLayoutPage() - 1) * itemLayoutPageSize;
+    return itemsByLayout().slice(start, start + itemLayoutPageSize);
+  });
+
+  createEffect(() => {
+    const mode = layoutMode();
+    setSelectedMerchant(null);
+    setCategoryPage(1);
+    setMerchantLayoutPage(1);
+    setItemLayoutPage(1);
+    if (mode === "LINK") setTab("LINK");
+    if (mode === "QRIS") setTab("QRIS");
+  });
 
   const selectedItems = createMemo(() => {
     const m = selectedMerchant();
@@ -703,26 +797,42 @@ export default function Dashboard(props: DashboardProps) {
       </div>
     );
 
-  if (!readOnly() && !auth.me() && !hasLocalToken()) return null;
+  if (!readOnly() && (auth.loading() || !auth.me()))
+    return (
+      <div class="shell">
+        <div class="panel">
+          <div class="panelInner">
+            <div style="display: grid; place-items: center; padding: 30px 12px; gap: 10px">
+              <span class="spinner" />
+              <div style="color: rgba(250,250,255,0.72)">Loading…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
 
   return (
     <div class="shell" style="place-items: start center">
+      <Show when={dashLoadingOverlay()}>
+        <div class="pageOverlay">
+          <div style="display: grid; place-items: center; padding: 30px 12px; gap: 10px">
+            <span class="spinner" />
+            <div style="color: rgba(250,250,255,0.72)">Loading…</div>
+          </div>
+        </div>
+      </Show>
       <div class="panel">
         <div class="panelInner">
           <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
             <div class="title" style="margin: 0">
               <h1>{readOnly() ? "CUAN YUK!" : "Dashboard"}</h1>
             </div>
-            <div
-              class="actionBar"
-              style={`grid-template-columns: repeat(${readOnly() ? 1 : adminAccessLoading() ? 3 : hasAdminAccess() ? 3 : 2}, minmax(0, 1fr))`}
-            >
+            <div class="actionBar" style="flex-wrap: wrap">
               <button
                 class="btn"
                 type="button"
                 onClick={() => void refresh({ showSpinner: true, showSkeleton: false })}
                 disabled={syncing() || Boolean(action())}
-                style="width: 100%"
               >
                 <span style="display: inline-flex; gap: 10px; align-items: center; justify-content: center; width: 100%">
                   {syncing() ? <span class="spinner" /> : null}
@@ -755,7 +865,6 @@ export default function Dashboard(props: DashboardProps) {
                       onClick={() => {
                         globalThis.location.href = "/admin";
                       }}
-                      style="width: 100%"
                     >
                       <span style="display: inline-flex; gap: 10px; align-items: center; justify-content: center; width: 100%; font: inherit">
                         <svg
@@ -781,7 +890,6 @@ export default function Dashboard(props: DashboardProps) {
                   type="button"
                   disabled={isAction("signout")}
                   onClick={() => void signOut()}
-                  style="width: 100%"
                 >
                   <span style="display: inline-flex; gap: 10px; align-items: center; justify-content: center; width: 100%">
                     {isAction("signout") ? <span class="spinner" /> : null}
@@ -803,6 +911,10 @@ export default function Dashboard(props: DashboardProps) {
                     <span>{isAction("signout") ? "Signing Out…" : "Log Out"}</span>
                   </span>
                 </button>
+
+                <div style="display: flex; justify-content: flex-end; margin-left: 4px">
+                  <NotificationBell />
+                </div>
               </Show>
             </div>
           </div>
@@ -811,47 +923,89 @@ export default function Dashboard(props: DashboardProps) {
             <div class="card" style="grid-column: span 8">
               <div class="cardInner">
                 <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
-                  <div style="font-weight: 650; letter-spacing: -0.01em">Merchant Lists</div>
-                  <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline; color: rgba(250,250,255,0.62); font-size: 13px">
-                    <div>Total Merchants: {merchants().length}</div>
-                    <div>Total Payment Links: {totalLinks()}</div>
-                    <div>Total QRIS: {totalQris()}</div>
+                  <h2 class="sectionH2">Totals:</h2>
+                  <div class="statPills">
+                    <span class="statPill">
+                      Merchants: <b>{merchants().length}</b>
+                    </span>
+                    <span class="statPill">
+                      Payment Links: <b>{totalLinks()}</b>
+                    </span>
+                    <span class="statPill">
+                      QRIS: <b>{totalQris()}</b>
+                    </span>
+                  </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 12px">
+                  <h2 class="sectionH2">Filter by:</h2>
+                  <div class="segmented">
+                    <button
+                      classList={{ segBtn: true, segBtnActive: layoutMode() === "CATEGORY" }}
+                      type="button"
+                      onClick={() => setLayoutMode("CATEGORY")}
+                    >
+                      Category
+                    </button>
+                    <button
+                      classList={{ segBtn: true, segBtnActive: layoutMode() === "MERCHANT" }}
+                      type="button"
+                      onClick={() => setLayoutMode("MERCHANT")}
+                    >
+                      Merchant
+                    </button>
+                    <button
+                      classList={{ segBtn: true, segBtnActive: layoutMode() === "LINK" }}
+                      type="button"
+                      onClick={() => setLayoutMode("LINK")}
+                    >
+                      Payment Link
+                    </button>
+                    <button
+                      classList={{ segBtn: true, segBtnActive: layoutMode() === "QRIS" }}
+                      type="button"
+                      onClick={() => setLayoutMode("QRIS")}
+                    >
+                      QRIS
+                    </button>
                   </div>
                 </div>
 
                 <Show when={!readOnly() && shareUrl()}>
-                  <div style="margin-top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
-                    <div style="color: rgba(250,250,255,0.62); font-size: 13px">Share link:</div>
-                    <button
-                      class="btn btnPrimary"
-                      type="button"
-                      onClick={() => {
-                        const url = shareUrl();
-                        if (!url) return;
-                        openUrl("share-open", url);
-                      }}
-                    >
-                      <span style="display: inline-flex; gap: 10px; align-items: center">
-                        {openItemId() === "share-open" ? <span class="spinner" /> : null}
-                        <span>Open</span>
-                      </span>
-                    </button>
-                    <button
-                      class="btn btnPrimary"
-                      type="button"
-                      onClick={async () => {
-                        try {
+                  <div style="margin-top: 12px; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap">
+                    <h2 class="sectionH2">Share:</h2>
+                    <div class="segmented" style="margin-left: auto">
+                      <button
+                        class="segBtn"
+                        type="button"
+                        onClick={() => {
                           const url = shareUrl();
                           if (!url) return;
-                          await navigator.clipboard.writeText(url);
-                          showToast("success", "Link copied.");
-                        } catch {
-                          showToast("error", "COPY_FAILED");
-                        }
-                      }}
-                    >
-                      Copy
-                    </button>
+                          openUrl("share-open", url);
+                        }}
+                      >
+                        <span style="display: inline-flex; gap: 10px; align-items: center">
+                          {openItemId() === "share-open" ? <span class="spinner" /> : null}
+                          <span>Open</span>
+                        </span>
+                      </button>
+                      <button
+                        class="segBtn"
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const url = shareUrl();
+                            if (!url) return;
+                            await navigator.clipboard.writeText(url);
+                            showToast("success", "Link copied.");
+                          } catch {
+                            showToast("error", "COPY_FAILED");
+                          }
+                        }}
+                      >
+                        Copy
+                      </button>
+                    </div>
                   </div>
                 </Show>
 
@@ -898,120 +1052,348 @@ export default function Dashboard(props: DashboardProps) {
                   }
                 >
                   <div style="display: grid; gap: 14px; margin-top: 14px">
-                    <For each={categoriesPaged()}>
-                      {(cat) => (
-                        <div>
-                          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px">
-                            <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(250,250,255,0.62)">
-                              {cat.category}
+                    <Show when={layoutMode() === "CATEGORY"}>
+                      <For each={categoriesPaged()}>
+                        {(cat) => (
+                          <div>
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px">
+                              <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(250,250,255,0.62)">
+                                {cat.category}
+                              </div>
                             </div>
-                          </div>
-                          <div
-                            style={{
-                              display: "grid",
-                              "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))",
-                              gap: "12px",
-                              "margin-top": "10px",
-                            }}
-                          >
-                            <For
-                              each={cat.merchants.slice(
-                                0,
-                                Math.max(0, visibleMerchantsCount(cat.category)),
-                              )}
+                            <div
+                              style={{
+                                display: "grid",
+                                "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))",
+                                gap: "12px",
+                                "margin-top": "10px",
+                              }}
                             >
-                              {(m) => {
-                                const sum = () =>
-                                  summaryByMerchant().get(m.id) ?? { links: 0, qris: 0, active: 0 };
-                                return (
-                                  <button
-                                    class="card"
-                                    type="button"
-                                    style={{
-                                      cursor: "pointer",
-                                      padding: "0",
-                                      "text-align": "left",
-                                    }}
-                                    onClick={() => {
-                                      setSelectedMerchant(m);
-                                      setTab("LINK");
-                                    }}
-                                  >
-                                    <div class="cardInner" style="display: grid; gap: 10px">
-                                      <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between">
-                                        <div style="display: inline-flex; gap: 10px; align-items: center; min-width: 0">
-                                          <img
-                                            src={m.pictureUrl ?? defaultMerchantImage(m.name)}
-                                            alt=""
-                                            style="width: 38px; height: 38px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.14); object-fit: cover; flex: 0 0 auto"
-                                            onError={(e) => {
-                                              const img = e.currentTarget;
-                                              if (img.dataset.fallback === "1") return;
-                                              img.dataset.fallback = "1";
-                                              img.src = defaultMerchantImage(m.name);
-                                            }}
-                                          />
-                                          <div style="font-weight: 700; letter-spacing: -0.01em; color: rgba(250,250,255,0.92); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-                                            {m.name}
+                              <For
+                                each={cat.merchants.slice(
+                                  0,
+                                  Math.max(0, visibleMerchantsCount(cat.category)),
+                                )}
+                              >
+                                {(m) => {
+                                  const sum = () =>
+                                    summaryByMerchant().get(m.id) ?? {
+                                      links: 0,
+                                      qris: 0,
+                                      active: 0,
+                                    };
+                                  return (
+                                    <button
+                                      class="card"
+                                      type="button"
+                                      style={{
+                                        cursor: "pointer",
+                                        padding: "0",
+                                        "text-align": "left",
+                                      }}
+                                      onClick={() => {
+                                        setSelectedMerchant(m);
+                                        setTab("LINK");
+                                      }}
+                                    >
+                                      <div class="cardInner" style="display: grid; gap: 10px">
+                                        <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between">
+                                          <div style="display: inline-flex; gap: 10px; align-items: center; min-width: 0">
+                                            <img
+                                              src={m.pictureUrl ?? defaultMerchantImage(m.name)}
+                                              alt=""
+                                              style="width: 38px; height: 38px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.14); object-fit: cover; flex: 0 0 auto"
+                                              onError={(e) => {
+                                                const img = e.currentTarget;
+                                                if (img.dataset.fallback === "1") return;
+                                                img.dataset.fallback = "1";
+                                                img.src = defaultMerchantImage(m.name);
+                                              }}
+                                            />
+                                            <div style="font-weight: 700; letter-spacing: -0.01em; color: rgba(250,250,255,0.92); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                                              {m.name}
+                                            </div>
                                           </div>
                                         </div>
+                                        <div style="font-size: 13px; color: rgba(250,250,255,0.78); line-height: 1.4">
+                                          <span class="countRow">
+                                            <span class="countPill">
+                                              <span class="countPillLabel">Links</span>
+                                              <span class="countPillValue">{sum().links}</span>
+                                            </span>
+                                            <span class="countDot">•</span>
+                                            <span class="countPill">
+                                              <span class="countPillLabel">QRIS</span>
+                                              <span class="countPillValue">{sum().qris}</span>
+                                            </span>
+                                          </span>
+                                        </div>
                                       </div>
-                                      <div style="font-size: 13px; color: rgba(250,250,255,0.78); line-height: 1.4">
-                                        <span class="countRow">
-                                          <span class="countPill">
-                                            <span class="countPillLabel">Links</span>
-                                            <span class="countPillValue">{sum().links}</span>
-                                          </span>
-                                          <span class="countDot">•</span>
-                                          <span class="countPill">
-                                            <span class="countPillLabel">QRIS</span>
-                                            <span class="countPillValue">{sum().qris}</span>
-                                          </span>
-                                        </span>
+                                    </button>
+                                  );
+                                }}
+                              </For>
+                            </div>
+                            <Show when={cat.merchants.length > visibleMerchantsCount(cat.category)}>
+                              <div style="margin-top: 10px">
+                                <button
+                                  class="btn"
+                                  type="button"
+                                  style="width: 100%"
+                                  onClick={() => loadMoreMerchants(cat.category)}
+                                >
+                                  Load more
+                                </button>
+                              </div>
+                            </Show>
+                          </div>
+                        )}
+                      </For>
+
+                      <Show when={categoryTotalPages() > 1}>
+                        <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap">
+                          <button
+                            class="btn"
+                            type="button"
+                            disabled={categoryPage() <= 1}
+                            onClick={() => setCategoryPage((p) => Math.max(1, p - 1))}
+                          >
+                            Prev
+                          </button>
+                          <button
+                            class="btn"
+                            type="button"
+                            disabled={categoryPage() >= categoryTotalPages()}
+                            onClick={() =>
+                              setCategoryPage((p) => Math.min(categoryTotalPages(), p + 1))
+                            }
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </Show>
+                    </Show>
+
+                    <Show when={layoutMode() === "MERCHANT"}>
+                      <div
+                        style={{
+                          display: "grid",
+                          "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))",
+                          gap: "12px",
+                        }}
+                      >
+                        <For each={merchantsPagedForLayout()}>
+                          {(m) => {
+                            const sum = () =>
+                              summaryByMerchant().get(m.id) ?? { links: 0, qris: 0, active: 0 };
+                            return (
+                              <button
+                                class="card"
+                                type="button"
+                                style={{ cursor: "pointer", padding: "0", "text-align": "left" }}
+                                onClick={() => {
+                                  setSelectedMerchant(m);
+                                  setTab("LINK");
+                                }}
+                              >
+                                <div class="cardInner" style="display: grid; gap: 10px">
+                                  <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between">
+                                    <div style="display: inline-flex; gap: 10px; align-items: center; min-width: 0">
+                                      <img
+                                        src={m.pictureUrl ?? defaultMerchantImage(m.name)}
+                                        alt=""
+                                        style="width: 38px; height: 38px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.14); object-fit: cover; flex: 0 0 auto"
+                                        onError={(e) => {
+                                          const img = e.currentTarget;
+                                          if (img.dataset.fallback === "1") return;
+                                          img.dataset.fallback = "1";
+                                          img.src = defaultMerchantImage(m.name);
+                                        }}
+                                      />
+                                      <div style="font-weight: 700; letter-spacing: -0.01em; color: rgba(250,250,255,0.92); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                                        {m.name}
                                       </div>
                                     </div>
-                                  </button>
-                                );
-                              }}
-                            </For>
-                          </div>
-                          <Show when={cat.merchants.length > visibleMerchantsCount(cat.category)}>
-                            <div style="margin-top: 10px">
-                              <button
-                                class="btn"
-                                type="button"
-                                style="width: 100%"
-                                onClick={() => loadMoreMerchants(cat.category)}
-                              >
-                                Load more
+                                  </div>
+                                  <div style="font-size: 13px; color: rgba(250,250,255,0.78); line-height: 1.4">
+                                    <span class="countRow">
+                                      <span class="countPill">
+                                        <span class="countPillLabel">Links</span>
+                                        <span class="countPillValue">{sum().links}</span>
+                                      </span>
+                                      <span class="countDot">•</span>
+                                      <span class="countPill">
+                                        <span class="countPillLabel">QRIS</span>
+                                        <span class="countPillValue">{sum().qris}</span>
+                                      </span>
+                                    </span>
+                                  </div>
+                                </div>
                               </button>
-                            </div>
-                          </Show>
-                        </div>
-                      )}
-                    </For>
-
-                    <Show when={categoryTotalPages() > 1}>
-                      <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap">
-                        <button
-                          class="btn"
-                          type="button"
-                          disabled={categoryPage() <= 1}
-                          onClick={() => setCategoryPage((p) => Math.max(1, p - 1))}
-                        >
-                          Prev
-                        </button>
-                        <button
-                          class="btn"
-                          type="button"
-                          disabled={categoryPage() >= categoryTotalPages()}
-                          onClick={() =>
-                            setCategoryPage((p) => Math.min(categoryTotalPages(), p + 1))
-                          }
-                        >
-                          Next
-                        </button>
+                            );
+                          }}
+                        </For>
                       </div>
+
+                      <Show when={merchantLayoutTotalPages() > 1}>
+                        <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap">
+                          <button
+                            class="btn"
+                            type="button"
+                            disabled={merchantLayoutPage() <= 1}
+                            onClick={() => setMerchantLayoutPage((p) => Math.max(1, p - 1))}
+                          >
+                            Prev
+                          </button>
+                          <button
+                            class="btn"
+                            type="button"
+                            disabled={merchantLayoutPage() >= merchantLayoutTotalPages()}
+                            onClick={() =>
+                              setMerchantLayoutPage((p) =>
+                                Math.min(merchantLayoutTotalPages(), p + 1),
+                              )
+                            }
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </Show>
+                    </Show>
+
+                    <Show when={layoutMode() === "LINK" || layoutMode() === "QRIS"}>
+                      <Show
+                        when={itemsByLayout().length > 0}
+                        fallback={
+                          <div class="emptyCenter">
+                            <div class="emptyLogo">CY</div>
+                            <div class="emptyTitle">No payments yet</div>
+                            <div class="emptyText">
+                              Drop a payment link or QRIS and it’ll show up here.
+                            </div>
+                          </div>
+                        }
+                      >
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: "12px",
+                            "grid-template-columns":
+                              layoutMode() === "QRIS"
+                                ? "repeat(auto-fit, minmax(260px, 1fr))"
+                                : "repeat(auto-fit, minmax(220px, 1fr))",
+                          }}
+                        >
+                          <For each={itemsPagedForLayout()}>
+                            {(it) => (
+                              <div style="border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 12px; display: grid; gap: 10px">
+                                <div style="display: flex; gap: 10px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
+                                  <div style="color: rgba(250,250,255,0.86); font-size: 16px; font-weight: 750; letter-spacing: -0.02em">
+                                    {formatIdr(it.totalAmount)}
+                                  </div>
+                                  <div style="color: rgba(250,250,255,0.62); font-size: 13px">
+                                    {formatCountdown(it.expiresAt)}
+                                  </div>
+                                </div>
+                                <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.4">
+                                  {it.merchant?.name ?? "—"}
+                                </div>
+                                <Show when={it.kind === "LINK" && it.paymentUrl}>
+                                  <button
+                                    class="btn btnWide"
+                                    type="button"
+                                    disabled={Boolean(action())}
+                                    onClick={() => {
+                                      const url = it.paymentUrl;
+                                      if (!url) return;
+                                      openUrl(`${it.id}:link`, url);
+                                    }}
+                                  >
+                                    <span style="display: inline-flex; gap: 10px; align-items: center">
+                                      {openItemId() === `${it.id}:link` ? (
+                                        <span class="spinner" />
+                                      ) : null}
+                                      <span>Open</span>
+                                    </span>
+                                  </button>
+                                </Show>
+                                <Show when={it.kind === "QRIS" && it.qrisUrl}>
+                                  <img
+                                    src={it.qrisUrl ?? defaultQrisImage(it.merchant?.name ?? "")}
+                                    alt="QRIS"
+                                    style="width: 100%; max-height: 420px; object-fit: contain; border-radius: 16px; border: 1px solid rgba(255,255,255,0.12)"
+                                    onError={(e) => {
+                                      const img = e.currentTarget;
+                                      if (img.dataset.fallback === "1") return;
+                                      img.dataset.fallback = "1";
+                                      img.src = defaultQrisImage(it.merchant?.name ?? "");
+                                    }}
+                                  />
+                                  <button
+                                    class="btn btnWide"
+                                    type="button"
+                                    disabled={Boolean(action())}
+                                    onClick={() => {
+                                      const url = it.qrisUrl;
+                                      if (!url) return;
+                                      openUrl(`${it.id}:qris`, url);
+                                    }}
+                                  >
+                                    <span style="display: inline-flex; gap: 10px; align-items: center">
+                                      {openItemId() === `${it.id}:qris` ? (
+                                        <span class="spinner" />
+                                      ) : null}
+                                      <span>Open</span>
+                                    </span>
+                                  </button>
+                                </Show>
+                                <Show when={!readOnly() && it.status === "ACTIVE"}>
+                                  <button
+                                    class="btn btnWide"
+                                    type="button"
+                                    disabled={Boolean(action())}
+                                    onClick={() => void deactivate(it.id)}
+                                  >
+                                    <span style="display: inline-flex; gap: 10px; align-items: center">
+                                      {isAction("deactivate", it.id) ? (
+                                        <span class="spinner" />
+                                      ) : null}
+                                      <span>
+                                        {isAction("deactivate", it.id)
+                                          ? "Taking Down…"
+                                          : "Take Down"}
+                                      </span>
+                                    </span>
+                                  </button>
+                                </Show>
+                              </div>
+                            )}
+                          </For>
+                        </div>
+
+                        <Show when={itemLayoutTotalPages() > 1}>
+                          <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap">
+                            <button
+                              class="btn"
+                              type="button"
+                              disabled={itemLayoutPage() <= 1}
+                              onClick={() => setItemLayoutPage((p) => Math.max(1, p - 1))}
+                            >
+                              Prev
+                            </button>
+                            <button
+                              class="btn"
+                              type="button"
+                              disabled={itemLayoutPage() >= itemLayoutTotalPages()}
+                              onClick={() =>
+                                setItemLayoutPage((p) => Math.min(itemLayoutTotalPages(), p + 1))
+                              }
+                            >
+                              Next
+                            </button>
+                          </div>
+                        </Show>
+                      </Show>
                     </Show>
                   </div>
                 </Show>
@@ -1059,221 +1441,225 @@ export default function Dashboard(props: DashboardProps) {
                   </div>
                 </div>
 
-                <div class="card">
-                  <div class="cardInner" style="display: grid; gap: 12px">
-                    <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(250,250,255,0.62)">
-                      Add Merchant
-                    </div>
-                    <div class="field">
-                      <label for="add_merchant_name">
-                        Name<span class="fieldReq">*</span>
-                      </label>
-                      <input
-                        id="add_merchant_name"
-                        class={merchantNameError() ? "inputError" : undefined}
-                        value={newMerchantName()}
-                        onInput={(e) => setNewMerchantName(e.currentTarget.value)}
-                        onBlur={() => setTouchedMerchantName(true)}
-                      />
-                      <Show when={merchantNameError()}>
-                        <div class="fieldError">{merchantNameError()}</div>
-                      </Show>
-                    </div>
-                    <div class="field">
-                      <label for="add_merchant_category">
-                        Category<span class="fieldReq">*</span>
-                      </label>
-                      <Show
-                        when={!loading() || categoriesList().length > 0}
-                        fallback={<div class="skeleton selectSkeleton" />}
-                      >
-                        <select
-                          id="add_merchant_category"
-                          class="select"
-                          style="width: 100%"
-                          classList={{ inputError: Boolean(merchantCategoryError()) }}
-                          value={newMerchantCategory()}
-                          disabled={categoriesList().length === 0}
-                          onChange={(e) => setNewMerchantCategory(e.currentTarget.value)}
-                          onBlur={() => setTouchedMerchantCategory(true)}
-                        >
-                          <For each={categoriesList()}>
-                            {(c) => <option value={c.name}>{c.name}</option>}
-                          </For>
-                        </select>
-                      </Show>
-                      <Show when={merchantCategoryError()}>
-                        <div class="fieldError">{merchantCategoryError()}</div>
-                      </Show>
-                    </div>
-                    <div class="field">
-                      <ImageDropzone
-                        id="merchant_picture"
-                        label="Merchant icon"
-                        file={newMerchantFile()}
-                        setFile={(f) => {
-                          setNewMerchantFile(f);
-                          setMerchantUploadProgress(null);
-                        }}
-                        supportedExts={["png", "jpg", "jpeg", "gif", "webp"]}
-                        progress={merchantUploadProgress()}
-                        disabled={Boolean(action())}
-                        invalidToast={(m) => showToast("error", m)}
-                      />
-                    </div>
-                    <button
-                      class="btn btnPrimary"
-                      type="button"
-                      disabled={
-                        !isMerchantNameValid() || !isMerchantCategoryValid() || Boolean(action())
-                      }
-                      onClick={() => {
-                        setTouchedMerchantName(true);
-                        setTouchedMerchantCategory(true);
-                        if (!isMerchantNameValid() || !isMerchantCategoryValid()) return;
-                        void addMerchant();
-                      }}
-                    >
-                      <span style="display: inline-flex; gap: 10px; align-items: center">
-                        {isAction("add_merchant") ? <span class="spinner" /> : null}
-                        <span>{isAction("add_merchant") ? "Submitting…" : "Submit"}</span>
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
-                <div class="card">
-                  <div class="cardInner" style="display: grid; gap: 12px">
-                    <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(250,250,255,0.62)">
-                      Add Payment Link/QRIS
-                    </div>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap">
-                      <button
-                        class={`btn ${postKind() === "LINK" ? "btnPrimary" : ""}`}
-                        type="button"
-                        onClick={() => setPostKind("LINK")}
-                      >
-                        Payment Link
-                      </button>
-                      <button
-                        class={`btn ${postKind() === "QRIS" ? "btnPrimary" : ""}`}
-                        type="button"
-                        onClick={() => setPostKind("QRIS")}
-                      >
-                        QRIS
-                      </button>
-                    </div>
-                    <div class="field">
-                      <label for="add_payment_merchant">
-                        Merchant<span class="fieldReq">*</span>
-                      </label>
-                      <Show
-                        when={!loading() || merchants().length > 0}
-                        fallback={<div class="skeleton selectSkeleton" />}
-                      >
-                        <select
-                          id="add_payment_merchant"
-                          class="select"
-                          style="width: 100%"
-                          classList={{ inputError: Boolean(paymentMerchantError()) }}
-                          value={postMerchantId()}
-                          onChange={(e) => setPostMerchantId(e.currentTarget.value)}
-                          onBlur={() => setTouchedPaymentMerchant(true)}
-                        >
-                          <For each={merchants()}>
-                            {(m) => <option value={m.id}>{m.name}</option>}
-                          </For>
-                        </select>
-                      </Show>
-                      <Show when={paymentMerchantError()}>
-                        <div class="fieldError">{paymentMerchantError()}</div>
-                      </Show>
-                    </div>
-                    <div class="field">
-                      <label for="add_payment_expiration">Expiration Time (default: 12H)</label>
-                      <input
-                        id="add_payment_expiration"
-                        placeholder="12h / 5m / 1h / 1d / lifetime"
-                        value={postExpiration()}
-                        onInput={(e) => setPostExpiration(e.currentTarget.value)}
-                      />
-                    </div>
-                    <div class="field">
-                      <label for="add_payment_amount">
-                        Payment Amount<span class="fieldReq">*</span>
-                      </label>
-                      <input
-                        id="add_payment_amount"
-                        class={paymentAmountError() ? "inputError" : undefined}
-                        inputmode="numeric"
-                        value={postTotalAmount()}
-                        onInput={(e) => setPostTotalAmount(e.currentTarget.value)}
-                        onBlur={() => setTouchedPaymentAmount(true)}
-                        placeholder="e.g. 150000"
-                      />
-                      <Show when={paymentAmountError()}>
-                        <div class="fieldError">{paymentAmountError()}</div>
-                      </Show>
-                    </div>
-                    <Show when={postKind() === "LINK"}>
+                <Show when={hasAnyCategories()}>
+                  <div class="card">
+                    <div class="cardInner" style="display: grid; gap: 12px">
+                      <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(250,250,255,0.62)">
+                        Add Merchant
+                      </div>
                       <div class="field">
-                        <label for="add_payment_link">
-                          Payment Link<span class="fieldReq">*</span>
+                        <label for="add_merchant_name">
+                          Name<span class="fieldReq">*</span>
                         </label>
                         <input
-                          id="add_payment_link"
-                          class={paymentLinkError() ? "inputError" : undefined}
-                          value={postLink()}
-                          onInput={(e) => setPostLink(e.currentTarget.value)}
-                          onBlur={() => setTouchedPaymentLink(true)}
-                          placeholder="https://…"
+                          id="add_merchant_name"
+                          class={merchantNameError() ? "inputError" : undefined}
+                          value={newMerchantName()}
+                          onInput={(e) => setNewMerchantName(e.currentTarget.value)}
+                          onBlur={() => setTouchedMerchantName(true)}
                         />
-                        <Show when={paymentLinkError()}>
-                          <div class="fieldError">{paymentLinkError()}</div>
+                        <Show when={merchantNameError()}>
+                          <div class="fieldError">{merchantNameError()}</div>
                         </Show>
                       </div>
-                    </Show>
-                    <Show when={postKind() === "QRIS"}>
+                      <div class="field">
+                        <label for="add_merchant_category">
+                          Category<span class="fieldReq">*</span>
+                        </label>
+                        <Show
+                          when={!loading() || categoriesList().length > 0}
+                          fallback={<div class="skeleton selectSkeleton" />}
+                        >
+                          <select
+                            id="add_merchant_category"
+                            class="select"
+                            style="width: 100%"
+                            classList={{ inputError: Boolean(merchantCategoryError()) }}
+                            value={newMerchantCategory()}
+                            disabled={categoriesList().length === 0}
+                            onChange={(e) => setNewMerchantCategory(e.currentTarget.value)}
+                            onBlur={() => setTouchedMerchantCategory(true)}
+                          >
+                            <For each={categoriesList()}>
+                              {(c) => <option value={c.name}>{c.name}</option>}
+                            </For>
+                          </select>
+                        </Show>
+                        <Show when={merchantCategoryError()}>
+                          <div class="fieldError">{merchantCategoryError()}</div>
+                        </Show>
+                      </div>
                       <div class="field">
                         <ImageDropzone
-                          id="add_payment_qris"
-                          label="QRIS image"
-                          required
-                          file={postQrisFile()}
+                          id="merchant_picture"
+                          label="Merchant icon"
+                          file={newMerchantFile()}
                           setFile={(f) => {
-                            setPostQrisFile(f);
-                            setQrisUploadProgress(null);
+                            setNewMerchantFile(f);
+                            setMerchantUploadProgress(null);
                           }}
                           supportedExts={["png", "jpg", "jpeg", "gif", "webp"]}
-                          progress={qrisUploadProgress()}
+                          progress={merchantUploadProgress()}
                           disabled={Boolean(action())}
                           invalidToast={(m) => showToast("error", m)}
                         />
-                        <Show when={paymentQrisError()}>
-                          <div class="fieldError">{paymentQrisError()}</div>
+                      </div>
+                      <button
+                        class="btn btnPrimary"
+                        type="button"
+                        disabled={
+                          !isMerchantNameValid() || !isMerchantCategoryValid() || Boolean(action())
+                        }
+                        onClick={() => {
+                          setTouchedMerchantName(true);
+                          setTouchedMerchantCategory(true);
+                          if (!isMerchantNameValid() || !isMerchantCategoryValid()) return;
+                          void addMerchant();
+                        }}
+                      >
+                        <span style="display: inline-flex; gap: 10px; align-items: center">
+                          {isAction("add_merchant") ? <span class="spinner" /> : null}
+                          <span>{isAction("add_merchant") ? "Submitting…" : "Submit"}</span>
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </Show>
+
+                <Show when={hasAnyMerchants()}>
+                  <div class="card">
+                    <div class="cardInner" style="display: grid; gap: 12px">
+                      <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(250,250,255,0.62)">
+                        Add Payment Link/QRIS
+                      </div>
+                      <div style="display: flex; gap: 10px; flex-wrap: wrap">
+                        <button
+                          class={`btn ${postKind() === "LINK" ? "btnPrimary" : ""}`}
+                          type="button"
+                          onClick={() => setPostKind("LINK")}
+                        >
+                          Payment Link
+                        </button>
+                        <button
+                          class={`btn ${postKind() === "QRIS" ? "btnPrimary" : ""}`}
+                          type="button"
+                          onClick={() => setPostKind("QRIS")}
+                        >
+                          QRIS
+                        </button>
+                      </div>
+                      <div class="field">
+                        <label for="add_payment_merchant">
+                          Merchant<span class="fieldReq">*</span>
+                        </label>
+                        <Show
+                          when={!loading() || merchants().length > 0}
+                          fallback={<div class="skeleton selectSkeleton" />}
+                        >
+                          <select
+                            id="add_payment_merchant"
+                            class="select"
+                            style="width: 100%"
+                            classList={{ inputError: Boolean(paymentMerchantError()) }}
+                            value={postMerchantId()}
+                            onChange={(e) => setPostMerchantId(e.currentTarget.value)}
+                            onBlur={() => setTouchedPaymentMerchant(true)}
+                          >
+                            <For each={merchants()}>
+                              {(m) => <option value={m.id}>{m.name}</option>}
+                            </For>
+                          </select>
+                        </Show>
+                        <Show when={paymentMerchantError()}>
+                          <div class="fieldError">{paymentMerchantError()}</div>
                         </Show>
                       </div>
-                    </Show>
-                    <button
-                      class="btn btnPrimary"
-                      type="button"
-                      disabled={!canSubmitPayment()}
-                      onClick={() => {
-                        setTouchedPaymentMerchant(true);
-                        setTouchedPaymentAmount(true);
-                        setTouchedPaymentLink(true);
-                        setTouchedPaymentQris(true);
-                        if (!canSubmitPayment()) return;
-                        void post();
-                      }}
-                    >
-                      <span style="display: inline-flex; gap: 10px; align-items: center">
-                        {isAction("post") ? <span class="spinner" /> : null}
-                        <span>{isAction("post") ? "Submitting…" : "Submit"}</span>
-                      </span>
-                    </button>
+                      <div class="field">
+                        <label for="add_payment_expiration">Expiration Time (default: 12H)</label>
+                        <input
+                          id="add_payment_expiration"
+                          placeholder="12h / 5m / 1h / 1d / lifetime"
+                          value={postExpiration()}
+                          onInput={(e) => setPostExpiration(e.currentTarget.value)}
+                        />
+                      </div>
+                      <div class="field">
+                        <label for="add_payment_amount">
+                          Payment Amount<span class="fieldReq">*</span>
+                        </label>
+                        <input
+                          id="add_payment_amount"
+                          class={paymentAmountError() ? "inputError" : undefined}
+                          inputmode="numeric"
+                          value={postTotalAmount()}
+                          onInput={(e) => setPostTotalAmount(e.currentTarget.value)}
+                          onBlur={() => setTouchedPaymentAmount(true)}
+                          placeholder="e.g. 150000"
+                        />
+                        <Show when={paymentAmountError()}>
+                          <div class="fieldError">{paymentAmountError()}</div>
+                        </Show>
+                      </div>
+                      <Show when={postKind() === "LINK"}>
+                        <div class="field">
+                          <label for="add_payment_link">
+                            Payment Link<span class="fieldReq">*</span>
+                          </label>
+                          <input
+                            id="add_payment_link"
+                            class={paymentLinkError() ? "inputError" : undefined}
+                            value={postLink()}
+                            onInput={(e) => setPostLink(e.currentTarget.value)}
+                            onBlur={() => setTouchedPaymentLink(true)}
+                            placeholder="https://…"
+                          />
+                          <Show when={paymentLinkError()}>
+                            <div class="fieldError">{paymentLinkError()}</div>
+                          </Show>
+                        </div>
+                      </Show>
+                      <Show when={postKind() === "QRIS"}>
+                        <div class="field">
+                          <ImageDropzone
+                            id="add_payment_qris"
+                            label="QRIS image"
+                            required
+                            file={postQrisFile()}
+                            setFile={(f) => {
+                              setPostQrisFile(f);
+                              setQrisUploadProgress(null);
+                            }}
+                            supportedExts={["png", "jpg", "jpeg", "gif", "webp"]}
+                            progress={qrisUploadProgress()}
+                            disabled={Boolean(action())}
+                            invalidToast={(m) => showToast("error", m)}
+                          />
+                          <Show when={paymentQrisError()}>
+                            <div class="fieldError">{paymentQrisError()}</div>
+                          </Show>
+                        </div>
+                      </Show>
+                      <button
+                        class="btn btnPrimary"
+                        type="button"
+                        disabled={!canSubmitPayment()}
+                        onClick={() => {
+                          setTouchedPaymentMerchant(true);
+                          setTouchedPaymentAmount(true);
+                          setTouchedPaymentLink(true);
+                          setTouchedPaymentQris(true);
+                          if (!canSubmitPayment()) return;
+                          void post();
+                        }}
+                      >
+                        <span style="display: inline-flex; gap: 10px; align-items: center">
+                          {isAction("post") ? <span class="spinner" /> : null}
+                          <span>{isAction("post") ? "Submitting…" : "Submit"}</span>
+                        </span>
+                      </button>
+                    </div>
                   </div>
-                </div>
+                </Show>
               </div>
             </Show>
           </div>

@@ -1,3 +1,4 @@
+import { DateTimePicker } from "@/components/date-time-picker";
 import { Toast, type ToastState } from "@/components/toast";
 import { useAuth } from "@/state/auth";
 import { api } from "@/utils/api";
@@ -6,7 +7,7 @@ import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 
 type IpEntry = {
   id: string;
-  deviceId: string;
+  ip: string;
   note: string | null;
   status: "ACTIVE" | "INACTIVE" | "PENDING" | "DELETED";
 };
@@ -20,7 +21,18 @@ type UserEntry = {
   updatedDate: string;
 };
 
-type Tab = "ips" | "users";
+type NotificationEntry = {
+  id: string;
+  title: string;
+  description: string;
+  importance: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  status: "ACTIVE" | "INACTIVE" | "PENDING" | "DELETED";
+  publishAt: string;
+  createdDate: string;
+  updatedDate: string;
+};
+
+type Tab = "ips" | "users" | "notifications";
 
 export default function Admin() {
   const auth = useAuth();
@@ -29,6 +41,15 @@ export default function Admin() {
   const [tab, setTab] = createSignal<Tab>("ips");
   const [toast, setToast] = createSignal<ToastState>(null);
   let toastTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  let ipSearchEl: HTMLInputElement | undefined;
+  let userSearchEl: HTMLInputElement | undefined;
+  let notifSearchEl: HTMLInputElement | undefined;
+
+  const markDashboardLoading = () => {
+    try {
+      sessionStorage.setItem("dash_loading", "1");
+    } catch {}
+  };
 
   const [ipEntries, setIpEntries] = createSignal<IpEntry[]>([]);
   const [ip, setIp] = createSignal("");
@@ -56,6 +77,23 @@ export default function Admin() {
   const [editRole, setEditRole] = createSignal<"USER" | "SUPER">("USER");
   const [editStatus, setEditStatus] = createSignal<"ACTIVE" | "INACTIVE">("ACTIVE");
 
+  const [notifications, setNotifications] = createSignal<NotificationEntry[]>([]);
+  const [notifLoading, setNotifLoading] = createSignal(false);
+  const [notifSaving, setNotifSaving] = createSignal(false);
+  const [notifQuery, setNotifQuery] = createSignal("");
+  const [notifStatusFilter, setNotifStatusFilter] = createSignal<"ALL" | "ACTIVE" | "INACTIVE">(
+    "ALL",
+  );
+  const [notifPage, setNotifPage] = createSignal(1);
+  const [editingNotifId, setEditingNotifId] = createSignal<string | null>(null);
+  const [notifTitle, setNotifTitle] = createSignal("");
+  const [notifDescription, setNotifDescription] = createSignal("");
+  const [notifImportance, setNotifImportance] =
+    createSignal<NotificationEntry["importance"]>("LOW");
+  const [notifStatus, setNotifStatus] = createSignal<"ACTIVE" | "INACTIVE">("ACTIVE");
+  const [notifPublishAt, setNotifPublishAt] = createSignal("");
+  const [nowMs, setNowMs] = createSignal(Date.now());
+
   const closeToast = () => {
     if (toastTimer) globalThis.clearTimeout(toastTimer);
     toastTimer = null;
@@ -69,12 +107,27 @@ export default function Admin() {
     toastTimer = globalThis.setTimeout(() => setToast(null), 5000);
   };
 
+  const toDateTimeLocal = (ms: number) => {
+    const d = new Date(ms);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const fromDateTimeLocal = (raw: string) => {
+    if (!raw) return null;
+    const d = new Date(raw);
+    if (!Number.isFinite(d.getTime())) return null;
+    return d;
+  };
+
+  const minPublishLocal = createMemo(() => toDateTimeLocal(nowMs()));
+
   const isSuper = createMemo(() => auth.me()?.role === "SUPER");
 
   const refreshIps = async () => {
     setIpLoading(true);
     try {
-      const res = await api.get<{ entries: IpEntry[] }>("/admin/devices");
+      const res = await api.get<{ entries: IpEntry[] }>("/admin/ips");
       setIpEntries(res.entries ?? []);
     } catch (e) {
       showToast("error", e instanceof Error ? e.message : "LOAD_FAILED");
@@ -95,10 +148,38 @@ export default function Admin() {
     }
   };
 
-  const refreshAll = async (opts?: { skipIfBusy?: boolean }) => {
-    if (opts?.skipIfBusy && (ipSaving() || userSaving())) return;
-    await Promise.all([refreshIps(), refreshUsers()]);
+  const refreshNotifications = async () => {
+    setNotifLoading(true);
+    try {
+      const res = await api.get<{ entries: NotificationEntry[] }>("/admin/notifications");
+      setNotifications(res.entries ?? []);
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "LOAD_FAILED");
+    } finally {
+      setNotifLoading(false);
+    }
   };
+
+  const refreshAll = async (opts?: { skipIfBusy?: boolean }) => {
+    if (opts?.skipIfBusy && (ipSaving() || userSaving() || notifSaving())) return;
+    await Promise.all([refreshIps(), refreshUsers(), refreshNotifications()]);
+  };
+
+  createEffect(() => {
+    const handler = () => markDashboardLoading();
+    globalThis.addEventListener("popstate", handler);
+    return () => globalThis.removeEventListener("popstate", handler);
+  });
+
+  createEffect(() => {
+    const id = globalThis.setInterval(() => setNowMs(Date.now()), 15_000);
+    return () => globalThis.clearInterval(id);
+  });
+
+  createEffect(() => {
+    if (notifPublishAt()) return;
+    setNotifPublishAt(toDateTimeLocal(Date.now() + 60_000));
+  });
 
   createEffect(() => {
     const me = auth.me();
@@ -124,8 +205,8 @@ export default function Admin() {
     setIpSaving(true);
     showToast("progress", "Submitting…");
     try {
-      await api.post("/admin/devices", {
-        deviceId: ipVal,
+      await api.post("/admin/ips", {
+        ip: ipVal,
         status: ipStatus(),
         note: ipNote().trim() || undefined,
       });
@@ -206,6 +287,90 @@ export default function Admin() {
     }
   };
 
+  const beginEditNotification = (n: NotificationEntry) => {
+    setEditingNotifId(n.id);
+    setNotifTitle(n.title);
+    setNotifDescription(n.description);
+    setNotifImportance(n.importance);
+    setNotifStatus(n.status === "INACTIVE" ? "INACTIVE" : "ACTIVE");
+    const d = new Date(n.publishAt);
+    setNotifPublishAt(Number.isFinite(d.getTime()) ? toDateTimeLocal(d.getTime()) : "");
+  };
+
+  const cancelNotificationEdit = () => {
+    setEditingNotifId(null);
+    setNotifTitle("");
+    setNotifDescription("");
+    setNotifImportance("LOW");
+    setNotifStatus("ACTIVE");
+    setNotifPublishAt(toDateTimeLocal(Date.now() + 60_000));
+  };
+
+  const notifTitleValid = createMemo(() => notifTitle().trim().length >= 2);
+  const notifDescValid = createMemo(() => notifDescription().trim().length >= 2);
+  const notifPublishValid = createMemo(() => {
+    const dt = fromDateTimeLocal(notifPublishAt());
+    if (!dt) return false;
+    return dt.getTime() > nowMs();
+  });
+
+  const saveNotification = async () => {
+    const title = notifTitle().trim();
+    const description = notifDescription().trim();
+    const publishAtDate = fromDateTimeLocal(notifPublishAt());
+    if (!publishAtDate) return;
+    if (!notifTitleValid() || !notifDescValid() || !notifPublishValid()) return;
+    setNotifSaving(true);
+    showToast("progress", "Submitting…");
+    try {
+      await api.post("/admin/notifications", {
+        id: editingNotifId() ?? undefined,
+        title,
+        description,
+        importance: notifImportance(),
+        status: notifStatus(),
+        publishAt: publishAtDate.toISOString(),
+      });
+      showToast("success", "Submitted.");
+      cancelNotificationEdit();
+      await refreshNotifications();
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "SAVE_FAILED");
+    } finally {
+      setNotifSaving(false);
+    }
+  };
+
+  const notifFiltered = createMemo(() => {
+    const q = notifQuery().trim().toLowerCase();
+    const s = notifStatusFilter();
+    return notifications().filter((n) => {
+      const statusOk =
+        s === "ALL" ? true : s === "ACTIVE" ? n.status === "ACTIVE" : n.status === "INACTIVE";
+      if (!statusOk) return false;
+      if (!q) return true;
+      return (
+        n.title.toLowerCase().includes(q) ||
+        n.description.toLowerCase().includes(q) ||
+        n.importance.toLowerCase().includes(q)
+      );
+    });
+  });
+  const notifPageSize = 10;
+  const notifTotalPages = createMemo(() =>
+    Math.max(1, Math.ceil(notifFiltered().length / notifPageSize)),
+  );
+  createEffect(() => {
+    const p = notifPage();
+    const tp = notifTotalPages();
+    if (p > tp) setNotifPage(tp);
+    if (p < 1) setNotifPage(1);
+  });
+  const notifPaged = createMemo(() => {
+    const start = (notifPage() - 1) * notifPageSize;
+    return notifFiltered().slice(start, start + notifPageSize);
+  });
+
   const ipFiltered = createMemo(() => {
     const q = ipQuery().trim().toLowerCase();
     const f = ipStatusFilter();
@@ -215,7 +380,7 @@ export default function Admin() {
       if (!statusOk) return false;
       if (!q) return true;
       const noteText = (e.note ?? "").toLowerCase();
-      return e.deviceId.toLowerCase().includes(q) || noteText.includes(q);
+      return e.ip.toLowerCase().includes(q) || noteText.includes(q);
     });
   });
   const ipPageSize = 10;
@@ -269,8 +434,11 @@ export default function Admin() {
               <button
                 class="iconBtn"
                 type="button"
-                onClick={() => navigate("/")}
-                disabled={ipSaving() || userSaving()}
+                onClick={() => {
+                  markDashboardLoading();
+                  navigate("/");
+                }}
+                disabled={ipSaving() || userSaving() || notifSaving()}
                 aria-label="Back"
               >
                 <svg
@@ -296,29 +464,398 @@ export default function Admin() {
                 type="button"
                 onClick={() => setTab("ips")}
               >
-                Device Lists
+                IP Management
               </button>
               <button
                 class={`btn ${tab() === "users" ? "btnPrimary" : ""}`}
                 type="button"
                 onClick={() => setTab("users")}
               >
-                User Lists
+                User Management
+              </button>
+              <button
+                class={`btn ${tab() === "notifications" ? "btnPrimary" : ""}`}
+                type="button"
+                onClick={() => setTab("notifications")}
+              >
+                Notif Management
               </button>
             </div>
+
+            <Show when={tab() === "notifications"}>
+              <div class="grid">
+                <div class="card" style="grid-column: span 5">
+                  <div class="cardInner" style="display: grid; gap: 12px">
+                    <div style="font-weight: 650; letter-spacing: -0.01em">Create/Update Notif</div>
+                    <div class="field">
+                      <label for="admin_notif_title">
+                        Title<span class="fieldReq">*</span>
+                      </label>
+                      <input
+                        id="admin_notif_title"
+                        value={notifTitle()}
+                        onInput={(e) => setNotifTitle(e.currentTarget.value)}
+                        placeholder="e.g. New dashboard layout options"
+                      />
+                    </div>
+                    <div class="field">
+                      <label for="admin_notif_desc">
+                        Description<span class="fieldReq">*</span>
+                      </label>
+                      <input
+                        id="admin_notif_desc"
+                        value={notifDescription()}
+                        onInput={(e) => setNotifDescription(e.currentTarget.value)}
+                        placeholder="e.g. You can now view items by category/merchant/link/QRIS."
+                      />
+                    </div>
+                    <div class="field">
+                      <label for="admin_notif_importance">Severity</label>
+                      <select
+                        id="admin_notif_importance"
+                        class="select"
+                        value={notifImportance()}
+                        onChange={(e) =>
+                          setNotifImportance(
+                            e.currentTarget.value as NotificationEntry["importance"],
+                          )
+                        }
+                      >
+                        <option value="LOW">Low</option>
+                        <option value="MEDIUM">Medium</option>
+                        <option value="HIGH">High</option>
+                        <option value="CRITICAL">Critical</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label for="admin_notif_publish">
+                        Publish Date<span class="fieldReq">*</span>
+                      </label>
+                      <DateTimePicker
+                        id="admin_notif_publish"
+                        value={notifPublishAt}
+                        onChange={setNotifPublishAt}
+                        minValue={minPublishLocal}
+                        disabled={notifSaving()}
+                      />
+                      <Show when={!notifPublishValid() && notifPublishAt().trim().length > 0}>
+                        <div class="fieldError">Please choose a future date/time.</div>
+                      </Show>
+                    </div>
+                    <div class="field">
+                      <label for="admin_notif_status">Status</label>
+                      <select
+                        id="admin_notif_status"
+                        class="select"
+                        value={notifStatus()}
+                        onChange={(e) =>
+                          setNotifStatus(e.currentTarget.value as "ACTIVE" | "INACTIVE")
+                        }
+                      >
+                        <option value="ACTIVE">Active</option>
+                        <option value="INACTIVE">Inactive</option>
+                      </select>
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end">
+                      <Show when={editingNotifId()}>
+                        <button
+                          class="btn"
+                          type="button"
+                          disabled={notifSaving()}
+                          onClick={cancelNotificationEdit}
+                        >
+                          Cancel
+                        </button>
+                      </Show>
+                      <button
+                        class="btn btnPrimary"
+                        type="button"
+                        disabled={
+                          notifSaving() ||
+                          !notifTitleValid() ||
+                          !notifDescValid() ||
+                          !notifPublishValid()
+                        }
+                        onClick={() => void saveNotification()}
+                      >
+                        <span style="display: inline-flex; gap: 10px; align-items: center">
+                          {notifSaving() ? <span class="spinner" /> : null}
+                          <span>{notifSaving() ? "Submitting…" : "Submit"}</span>
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="card" style="grid-column: span 7">
+                  <div class="cardInner" style="display: grid; gap: 12px">
+                    <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
+                      <div style="font-weight: 650; letter-spacing: -0.01em">Notif Management</div>
+                      <button
+                        class="btn"
+                        type="button"
+                        disabled={notifLoading()}
+                        onClick={() => void refreshNotifications()}
+                      >
+                        <span style="display: inline-flex; gap: 10px; align-items: center">
+                          {notifLoading() ? <span class="spinner" /> : null}
+                          {!notifLoading() ? (
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                            >
+                              <title>Refresh</title>
+                              <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                              <path d="M21 3v6h-6" />
+                            </svg>
+                          ) : null}
+                          <span>{notifLoading() ? "Loading…" : "Refresh"}</span>
+                        </span>
+                      </button>
+                    </div>
+
+                    <div class="filterRow filterRow2">
+                      <div class="field" style="margin: 0">
+                        <label for="admin_notif_search">Search</label>
+                        <div class="inputIconWrap">
+                          <input
+                            ref={(el) => {
+                              notifSearchEl = el;
+                            }}
+                            id="admin_notif_search"
+                            value={notifQuery()}
+                            onInput={(e) => setNotifQuery(e.currentTarget.value)}
+                            placeholder="Search title or description"
+                          />
+                          <button
+                            class="inputIconBtn"
+                            type="button"
+                            aria-label="Search"
+                            disabled={notifQuery().trim().length === 0}
+                            onClick={() => notifSearchEl?.focus()}
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                            >
+                              <title>Search</title>
+                              <circle cx="11" cy="11" r="7" />
+                              <path d="M21 21l-4.3-4.3" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div class="field" style="margin: 0">
+                        <label for="admin_notif_status_filter">Status</label>
+                        <select
+                          id="admin_notif_status_filter"
+                          class="select"
+                          value={notifStatusFilter()}
+                          onChange={(e) =>
+                            setNotifStatusFilter(
+                              e.currentTarget.value as "ALL" | "ACTIVE" | "INACTIVE",
+                            )
+                          }
+                        >
+                          <option value="ALL">All</option>
+                          <option value="ACTIVE">Active</option>
+                          <option value="INACTIVE">Inactive</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <Show
+                      when={notifFiltered().length}
+                      fallback={
+                        notifLoading() ? (
+                          <div style="display: grid; gap: 10px">
+                            <For each={[1, 2, 3, 4, 5, 6]}>
+                              {() => (
+                                <div class="card" style="padding: 0">
+                                  <div class="cardInner" style="display: grid; gap: 10px">
+                                    <div style="display: flex; gap: 10px; align-items: baseline; justify-content: space-between">
+                                      <div
+                                        class="skeleton"
+                                        style="height: 14px; width: 58%; border-radius: 10px"
+                                      />
+                                      <div style="display: inline-flex; gap: 8px">
+                                        <div
+                                          class="skeleton"
+                                          style="height: 22px; width: 76px; border-radius: 999px"
+                                        />
+                                        <div
+                                          class="skeleton"
+                                          style="height: 22px; width: 86px; border-radius: 999px"
+                                        />
+                                      </div>
+                                    </div>
+                                    <div
+                                      class="skeleton"
+                                      style="height: 12px; width: 62%; border-radius: 10px"
+                                    />
+                                    <div style="display: flex; gap: 10px; flex-wrap: wrap">
+                                      <div
+                                        class="skeleton"
+                                        style="height: 38px; width: 76px; border-radius: 14px"
+                                      />
+                                      <div
+                                        class="skeleton"
+                                        style="height: 38px; width: 110px; border-radius: 14px"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </For>
+                          </div>
+                        ) : (
+                          <div style="color: rgba(250,250,255,0.7)">No matches.</div>
+                        )
+                      }
+                    >
+                      <div class="ipListScroll">
+                        <div style="display: grid; gap: 10px">
+                          <For each={notifPaged()}>
+                            {(e) => {
+                              const publishMs = () => new Date(e.publishAt).getTime();
+                              const scheduled = () =>
+                                Number.isFinite(publishMs()) && publishMs() > nowMs();
+                              const severityText = () =>
+                                e.importance === "LOW"
+                                  ? "Low"
+                                  : e.importance === "MEDIUM"
+                                    ? "Medium"
+                                    : e.importance === "HIGH"
+                                      ? "High"
+                                      : "Critical";
+                              const severityPillClass = () =>
+                                `statusPill ${
+                                  e.importance === "LOW"
+                                    ? "statusInactive"
+                                    : e.importance === "MEDIUM"
+                                      ? "statusPending"
+                                      : e.importance === "HIGH"
+                                        ? "statusActive"
+                                        : "statusDeleted"
+                                }`;
+                              const pillClass = () =>
+                                `statusPill ${
+                                  e.status !== "ACTIVE"
+                                    ? "statusInactive"
+                                    : scheduled()
+                                      ? "statusPending"
+                                      : "statusActive"
+                                }`;
+                              const pillText = () =>
+                                e.status !== "ACTIVE"
+                                  ? "Inactive"
+                                  : scheduled()
+                                    ? "Scheduled"
+                                    : "Published";
+                              return (
+                                <div style="border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 12px; display: grid; gap: 8px">
+                                  <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
+                                    <div style="font-weight: 700; letter-spacing: -0.01em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                                      {e.title}
+                                    </div>
+                                    <div style="display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap">
+                                      <span class={severityPillClass()}>{severityText()}</span>
+                                      <span class={pillClass()}>{pillText()}</span>
+                                    </div>
+                                  </div>
+                                  <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.4">
+                                    {e.description}
+                                  </div>
+                                  <div style="display: flex; gap: 10px; flex-wrap: wrap">
+                                    <button
+                                      class="btn"
+                                      type="button"
+                                      disabled={notifSaving()}
+                                      onClick={() => beginEditNotification(e)}
+                                    >
+                                      Update
+                                    </button>
+                                    <button
+                                      class="btn"
+                                      type="button"
+                                      disabled={notifSaving()}
+                                      onClick={() =>
+                                        void api
+                                          .post("/admin/notifications", {
+                                            id: e.id,
+                                            title: e.title,
+                                            description: e.description,
+                                            importance: e.importance,
+                                            status: e.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
+                                            publishAt: e.publishAt,
+                                          })
+                                          .then(refreshNotifications)
+                                      }
+                                    >
+                                      {e.status === "ACTIVE" ? "Deactivate" : "Activate"}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            }}
+                          </For>
+                        </div>
+                      </div>
+
+                      <div style="display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap">
+                        <div style="color: rgba(250,250,255,0.62); font-size: 13px">
+                          Page {notifPage()} of {notifTotalPages()} • Showing{" "}
+                          {Math.min(
+                            notifPageSize,
+                            notifFiltered().length - (notifPage() - 1) * notifPageSize,
+                          )}{" "}
+                          of {notifFiltered().length}
+                        </div>
+                        <div style="display: flex; gap: 10px; align-items: center">
+                          <button
+                            class="btn"
+                            type="button"
+                            disabled={notifPage() <= 1}
+                            onClick={() => setNotifPage((p) => Math.max(1, p - 1))}
+                          >
+                            Prev
+                          </button>
+                          <button
+                            class="btn"
+                            type="button"
+                            disabled={notifPage() >= notifTotalPages()}
+                            onClick={() => setNotifPage((p) => Math.min(notifTotalPages(), p + 1))}
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    </Show>
+                  </div>
+                </div>
+              </div>
+            </Show>
 
             <Show when={tab() === "ips"}>
               <div class="grid">
                 <div class="card" style="grid-column: span 5">
                   <div class="cardInner" style="display: grid; gap: 12px">
-                    <div style="font-weight: 650; letter-spacing: -0.01em">Add / Update Device</div>
+                    <div style="font-weight: 650; letter-spacing: -0.01em">Create/Update IP</div>
                     <div class="field">
-                      <label for="admin_ip_address">Device ID</label>
+                      <label for="admin_ip_address">IP Address</label>
                       <input
                         id="admin_ip_address"
                         value={ip()}
                         onInput={(e) => setIp(e.currentTarget.value)}
-                        placeholder="e.g. 7f06b84f-10c9-0ace-952e-5cf24d5ad4aa"
+                        placeholder="e.g. 203.0.113.10"
                       />
                     </div>
                     <div class="field">
@@ -373,7 +910,7 @@ export default function Admin() {
                 <div class="card" style="grid-column: span 7">
                   <div class="cardInner" style="display: grid; gap: 12px">
                     <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
-                      <div style="font-weight: 650; letter-spacing: -0.01em">Device Lists</div>
+                      <div style="font-weight: 650; letter-spacing: -0.01em">IP Management</div>
                       <button
                         class="btn"
                         type="button"
@@ -406,12 +943,21 @@ export default function Admin() {
                         <label for="admin_ip_search">Search</label>
                         <div class="inputIconWrap">
                           <input
+                            ref={(el) => {
+                              ipSearchEl = el;
+                            }}
                             id="admin_ip_search"
                             value={ipQuery()}
                             onInput={(e) => setIpQuery(e.currentTarget.value)}
-                            placeholder="Search device ID or remarks"
+                            placeholder="Search IP or remarks"
                           />
-                          <span class="inputIcon" aria-hidden="true">
+                          <button
+                            class="inputIconBtn"
+                            type="button"
+                            aria-label="Search"
+                            disabled={ipQuery().trim().length === 0}
+                            onClick={() => ipSearchEl?.focus()}
+                          >
                             <svg
                               width="16"
                               height="16"
@@ -424,7 +970,7 @@ export default function Admin() {
                               <circle cx="11" cy="11" r="7" />
                               <path d="M21 21l-4.3-4.3" />
                             </svg>
-                          </span>
+                          </button>
                         </div>
                       </div>
                       <div class="field" style="margin: 0">
@@ -496,12 +1042,12 @@ export default function Admin() {
                               <div style="border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 12px; display: grid; gap: 8px">
                                 <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
                                   <div style="font-weight: 700; letter-spacing: -0.01em">
-                                    {e.deviceId}
+                                    {e.ip}
                                   </div>
                                   <span
                                     class={`statusPill ${e.status === "ACTIVE" ? "statusActive" : "statusInactive"}`}
                                   >
-                                    {e.status === "ACTIVE" ? "Whitelist" : "Blacklist"}
+                                    {e.status === "ACTIVE" ? "Whitelisted" : "Blacklisted"}
                                   </span>
                                 </div>
                                 <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.4">
@@ -513,13 +1059,13 @@ export default function Admin() {
                                     type="button"
                                     disabled={ipSaving()}
                                     onClick={() => {
-                                      setIp(e.deviceId);
+                                      setIp(e.ip);
                                       setIpNote(e.note ?? "");
                                       setIpStatus(e.status === "ACTIVE" ? "ACTIVE" : "INACTIVE");
                                       setIpEditing(true);
                                     }}
                                   >
-                                    Edit
+                                    Update
                                   </button>
                                   <Show when={e.status !== "ACTIVE"}>
                                     <button
@@ -528,8 +1074,8 @@ export default function Admin() {
                                       disabled={ipSaving()}
                                       onClick={() =>
                                         void api
-                                          .post("/admin/devices", {
-                                            deviceId: e.deviceId,
+                                          .post("/admin/ips", {
+                                            ip: e.ip,
                                             status: "ACTIVE",
                                             note: e.note ?? undefined,
                                           })
@@ -546,8 +1092,8 @@ export default function Admin() {
                                       disabled={ipSaving()}
                                       onClick={() =>
                                         void api
-                                          .post("/admin/devices", {
-                                            deviceId: e.deviceId,
+                                          .post("/admin/ips", {
+                                            ip: e.ip,
                                             status: "INACTIVE",
                                             note: e.note ?? undefined,
                                           })
@@ -684,7 +1230,7 @@ export default function Admin() {
                 <div class="card" style="grid-column: span 7">
                   <div class="cardInner" style="display: grid; gap: 12px">
                     <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
-                      <div style="font-weight: 650; letter-spacing: -0.01em">User Lists</div>
+                      <div style="font-weight: 650; letter-spacing: -0.01em">User Management</div>
                       <button
                         class="btn"
                         type="button"
@@ -717,12 +1263,21 @@ export default function Admin() {
                         <label for="admin_user_search">Search</label>
                         <div class="inputIconWrap">
                           <input
+                            ref={(el) => {
+                              userSearchEl = el;
+                            }}
                             id="admin_user_search"
                             value={userQuery()}
                             onInput={(e) => setUserQuery(e.currentTarget.value)}
                             placeholder="Search email or username"
                           />
-                          <span class="inputIcon" aria-hidden="true">
+                          <button
+                            class="inputIconBtn"
+                            type="button"
+                            aria-label="Search"
+                            disabled={userQuery().trim().length === 0}
+                            onClick={() => userSearchEl?.focus()}
+                          >
                             <svg
                               width="16"
                               height="16"
@@ -735,7 +1290,7 @@ export default function Admin() {
                               <circle cx="11" cy="11" r="7" />
                               <path d="M21 21l-4.3-4.3" />
                             </svg>
-                          </span>
+                          </button>
                         </div>
                       </div>
                       <div class="field" style="margin: 0">
@@ -861,7 +1416,7 @@ export default function Admin() {
                                     disabled={userSaving()}
                                     onClick={() => beginEditUser(u)}
                                   >
-                                    Edit
+                                    Update
                                   </button>
                                   <button
                                     class="btn"

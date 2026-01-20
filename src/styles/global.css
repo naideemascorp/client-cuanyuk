@@ -121,6 +121,14 @@ input {
   letter-spacing: -0.02em;
 }
 
+.sectionH2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: rgba(250, 250, 255, 0.92);
+}
+
 .title p {
   margin: 0;
   color: var(--muted);
@@ -204,6 +212,28 @@ input {
   background: radial-gradient(circle at 15% 20%, rgba(255, 124, 207, 0.28), transparent 58%),
     radial-gradient(circle at 85% 30%, rgba(124, 255, 214, 0.2), transparent 58%),
     linear-gradient(135deg, rgba(157, 124, 255, 0.26), rgba(255, 255, 255, 0.06));
+}
+
+.btnGroup {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.btnGroup .btn {
+  border: 0;
+  border-radius: 0;
+}
+
+.btnGroup .btn:hover {
+  transform: none;
+}
+
+.btnGroup .btn + .btn {
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .btnHeroSecondary {
@@ -527,15 +557,16 @@ input {
 }
 
 .iconBtn {
-  width: 42px;
-  height: 42px;
-  border-radius: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.04);
   color: rgba(250, 250, 255, 0.86);
   display: grid;
   place-items: center;
   cursor: pointer;
+  position: relative;
   transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
@@ -548,6 +579,323 @@ input {
 .iconBtn:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.notifBadge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 18px;
+  height: 14px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: linear-gradient(135deg, rgba(255, 124, 207, 0.9), rgba(157, 124, 255, 0.85));
+  color: rgba(10, 10, 14, 0.92);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+.notifPanel {
+  position: fixed;
+  width: min(420px, calc(100vw - 24px));
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: radial-gradient(circle at 10% 15%, rgba(255, 124, 207, 0.14), transparent 56%),
+    radial-gradient(circle at 88% 25%, rgba(124, 255, 214, 0.14), transparent 56%),
+    linear-gradient(180deg, rgba(22, 30, 52, 0.92), rgba(12, 14, 22, 0.86));
+  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+  z-index: 80;
+  backdrop-filter: blur(12px);
+}
+
+.notifHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 12px 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.notifTitle {
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: rgba(250, 250, 255, 0.92);
+}
+
+.notifClose {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(250, 250, 255, 0.76);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.notifClose:hover {
+  border-color: rgba(255, 124, 207, 0.32);
+}
+
+.notifList {
+  max-height: min(420px, calc(100vh - 160px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.notifItem {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: grid;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.notifItem:last-child {
+  border-bottom: none;
+}
+
+.notifItem--unread {
+  background: radial-gradient(circle at 10% 15%, rgba(124, 255, 214, 0.12), transparent 58%),
+    rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(124, 255, 214, 0.18);
+}
+
+.notifItem--read {
+  opacity: 0.86;
+}
+
+.notifRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.notifWhen {
+  color: rgba(250, 250, 255, 0.56);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.notifItemTitle {
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  color: rgba(250, 250, 255, 0.9);
+  line-height: 1.2;
+}
+
+.notifItemDesc {
+  color: rgba(250, 250, 255, 0.7);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.importancePill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: rgba(10, 10, 14, 0.92);
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.importancePill--LOW {
+  background: linear-gradient(135deg, rgba(140, 180, 255, 0.95), rgba(124, 255, 214, 0.85));
+}
+
+.importancePill--MEDIUM {
+  background: linear-gradient(135deg, rgba(157, 124, 255, 0.95), rgba(124, 255, 214, 0.85));
+}
+
+.importancePill--HIGH {
+  background: linear-gradient(135deg, rgba(255, 188, 124, 0.95), rgba(255, 124, 207, 0.8));
+}
+
+.importancePill--CRITICAL {
+  background: linear-gradient(135deg, rgba(255, 124, 207, 0.95), rgba(255, 92, 92, 0.85));
+}
+
+.dtpWrap {
+  position: relative;
+}
+
+.dtpInput {
+  width: 100%;
+  padding: 12px 44px 12px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(250, 250, 255, 0.92);
+  outline: none;
+}
+
+.dtpInput:focus {
+  border-color: rgba(124, 255, 214, 0.3);
+  box-shadow: 0 0 0 4px rgba(124, 255, 214, 0.1);
+}
+
+.dtpPanel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  z-index: 60;
+  width: min(360px, calc(100vw - 56px));
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: radial-gradient(circle at 10% 15%, rgba(157, 124, 255, 0.12), transparent 56%),
+    radial-gradient(circle at 88% 25%, rgba(124, 255, 214, 0.12), transparent 56%),
+    linear-gradient(180deg, rgba(22, 30, 52, 0.92), rgba(12, 14, 22, 0.9));
+  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.65);
+  padding: 12px;
+  backdrop-filter: blur(12px);
+}
+
+.dtpTrigger {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(250, 250, 255, 0.82);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.dtpTrigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dtpTrigger:hover:not(:disabled) {
+  border-color: rgba(124, 255, 214, 0.24);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dtpHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.dtpMonth {
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: rgba(250, 250, 255, 0.92);
+}
+
+.dtpNav {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(250, 250, 255, 0.86);
+  cursor: pointer;
+}
+
+.dtpDow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(250, 250, 255, 0.55);
+}
+
+.dtpGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.dtpDay {
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(250, 250, 255, 0.9);
+  cursor: pointer;
+}
+
+.dtpDay:active {
+  transform: translateY(1px);
+}
+
+.dtpDay--dim {
+  opacity: 0.52;
+}
+
+.dtpDay--selected {
+  border-color: rgba(124, 255, 214, 0.35);
+  background: linear-gradient(135deg, rgba(124, 255, 214, 0.18), rgba(157, 124, 255, 0.12));
+}
+
+.dtpDay--disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.dtpTimeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.dtpSelect {
+  flex: 1;
+}
+
+.dtpColon {
+  color: rgba(250, 250, 255, 0.7);
+  font-weight: 900;
+}
+
+.dtpActions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+@media (max-width: 520px) {
+  .dtpPanel {
+    left: 0;
+    right: 0;
+    width: 100%;
+  }
+  .dtpDay {
+    height: 40px;
+    border-radius: 14px;
+  }
+  .dtpNav {
+    width: 40px;
+    height: 40px;
+    border-radius: 14px;
+  }
 }
 
 .inputIconWrap {
@@ -572,6 +920,39 @@ input {
   place-items: center;
   color: rgba(250, 250, 255, 0.72);
   pointer-events: none;
+}
+
+.inputIconBtn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  place-items: center;
+  color: rgba(250, 250, 255, 0.82);
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease, opacity 0.14s
+    ease;
+}
+
+.inputIconBtn:hover {
+  transform: translateY(-50%) scale(1.02);
+  border-color: rgba(124, 255, 214, 0.3);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.inputIconBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+  color: rgba(250, 250, 255, 0.55);
+  transform: translateY(-50%);
 }
 
 .fieldReq {
@@ -728,9 +1109,10 @@ input {
 }
 
 .actionBar {
-  display: grid;
+  display: flex;
   gap: 10px;
   align-items: center;
+  justify-content: flex-end;
 }
 
 .countRow {
@@ -763,6 +1145,77 @@ input {
 
 .countDot {
   color: rgba(250, 250, 255, 0.42);
+}
+
+.statPills {
+  display: inline-flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.statPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(135deg, rgba(124, 255, 214, 0.1), rgba(157, 124, 255, 0.08));
+  color: rgba(250, 250, 255, 0.76);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.statPill b {
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  color: rgba(250, 250, 255, 0.92);
+}
+
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.18);
+  flex-wrap: wrap;
+}
+
+.segBtn {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(250, 250, 255, 0.72);
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease, color 0.14s ease;
+}
+
+.segBtn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(124, 255, 214, 0.24);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.segBtnActive {
+  border-color: rgba(124, 255, 214, 0.28);
+  background: linear-gradient(135deg, rgba(124, 255, 214, 0.16), rgba(157, 124, 255, 0.12));
+  color: rgba(250, 250, 255, 0.92);
+}
+
+.pageOverlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 7, 10, 0.72);
+  backdrop-filter: blur(10px);
+  z-index: 60;
 }
 
 .toastWrap {
@@ -824,9 +1277,23 @@ input {
   flex: 0 0 auto;
 }
 
-.toastMsg {
-  color: rgba(250, 250, 255, 0.86);
+.toastText {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.toastTitle {
+  color: rgba(250, 250, 255, 0.94);
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
   font-size: 14px;
+}
+
+.toastBody {
+  color: rgba(250, 250, 255, 0.72);
+  font-size: 13px;
   line-height: 1.35;
   min-width: 0;
   overflow: hidden;
@@ -1061,6 +1528,41 @@ input {
   font-size: 12px;
 }
 
+.dropzoneActions {
+  margin-top: 6px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dropzoneBrowseBtn {
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 124, 207, 0.14),
+    rgba(157, 124, 255, 0.14),
+    rgba(124, 255, 214, 0.12)
+  );
+  color: rgba(250, 250, 255, 0.9);
+  cursor: pointer;
+}
+
+.dropzoneBrowseBtn:hover {
+  border-color: rgba(124, 255, 214, 0.34);
+}
+
+.dropzoneBrowseBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.dropzoneBrowseBtnSecondary {
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .dropzoneProgress {
   height: 6px;
   border-radius: 999px;
@@ -1168,7 +1670,17 @@ input {
   padding: 12px 14px;
   font-size: 13px;
   letter-spacing: 0.02em;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 520px) {
+  .appFooterInner {
+    flex-direction: column;
+    text-align: center;
+  }
 }
 
 @media (max-width: 720px) {

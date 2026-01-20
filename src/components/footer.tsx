@@ -1,8 +1,10 @@
 export function Footer() {
-  const year = new Date().getFullYear();
   return (
     <div class="appFooter">
-      <div class="appFooterInner">Copyright © {year} | Proudly presented by Cuan Yuk!</div>
+      <div class="appFooterInner">
+        <div>Copyright © 2026 Cuan Yuk!</div>
+        <div>All rights reserved</div>
+      </div>
     </div>
   );
 }
