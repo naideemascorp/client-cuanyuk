@@ -1,21 +1,23 @@
+import { Footer } from "@/components/footer";
+import { ToastHost } from "@/components/toast-host";
+import { AuthProvider } from "@/state/auth";
+import { ToastProvider } from "@/state/toast";
 import { Route, Router, useLocation, useNavigate } from "@solidjs/router";
-import { lazy, createEffect } from "solid-js";
-import { AuthProvider } from "./state/auth";
-import { Footer } from "./components/footer";
+import { createEffect, lazy } from "solid-js";
 
-const SignIn = lazy(() => import("./pages/sign-in"));
-const SignUp = lazy(() => import("./pages/sign-up"));
-const VerifyEmail = lazy(() => import("./pages/verify-email"));
-const Dashboard = lazy(() => import("./pages/dashboard"));
-const Share = lazy(() => import("./pages/share"));
-const Admin = lazy(() => import("./pages/admin"));
-const ResetPassword = lazy(() => import("./pages/reset-password"));
+const SignIn = lazy(() => import("@/pages/sign-in"));
+const SignUp = lazy(() => import("@/pages/sign-up"));
+const VerifyEmail = lazy(() => import("@/pages/verify-email"));
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Share = lazy(() => import("@/pages/share"));
+const Admin = lazy(() => import("@/pages/admin"));
+const ResetPassword = lazy(() => import("@/pages/reset-password"));
 
 const RedirectShim = () => {
   const navigate = useNavigate();
   const location = useLocation();
   createEffect(() => {
-    const search = location.search ?? window.location.search;
+    const search = location.search ?? globalThis.location.search;
     const sp = new URLSearchParams(search);
     const raw = sp.get("__redirect");
     if (!raw) return;
@@ -29,13 +31,16 @@ const RedirectShim = () => {
 export const App = () => (
   <Router
     root={(props) => (
-      <AuthProvider>
-        <div class="appRoot">
-          <RedirectShim />
-          <div class="appMain">{props.children}</div>
-          <Footer />
-        </div>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <div class="appRoot">
+            <RedirectShim />
+            <div class="appMain">{props.children}</div>
+            <Footer />
+            <ToastHost />
+          </div>
+        </AuthProvider>
+      </ToastProvider>
     )}
   >
     <Route path="/" component={Dashboard} />

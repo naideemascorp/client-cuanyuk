@@ -1,4 +1,4 @@
-import { JSX, Show, createEffect, onCleanup } from "solid-js";
+import { type JSX, Show, createEffect, onCleanup } from "solid-js";
 
 export const Modal = (props: { open: boolean; onClose: () => void; children: JSX.Element }) => {
   createEffect(() => {
@@ -6,8 +6,8 @@ export const Modal = (props: { open: boolean; onClose: () => void; children: JSX
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") props.onClose();
     };
-    window.addEventListener("keydown", onKey);
-    onCleanup(() => window.removeEventListener("keydown", onKey));
+    globalThis.addEventListener("keydown", onKey);
+    onCleanup(() => globalThis.removeEventListener("keydown", onKey));
   });
 
   return (
@@ -21,7 +21,7 @@ export const Modal = (props: { open: boolean; onClose: () => void; children: JSX
           "place-items": "center",
           padding: "18px",
           background: "rgba(0,0,0,0.55)",
-          "backdrop-filter": "blur(10px)"
+          "backdrop-filter": "blur(10px)",
         }}
         onMouseDown={(e) => {
           if (e.target === e.currentTarget) props.onClose();
@@ -31,7 +31,7 @@ export const Modal = (props: { open: boolean; onClose: () => void; children: JSX
           class="card"
           style={{
             width: "min(980px, 100%)",
-            "border-radius": "22px"
+            "border-radius": "22px",
           }}
         >
           <div class="cardInner">{props.children}</div>
@@ -40,4 +40,3 @@ export const Modal = (props: { open: boolean; onClose: () => void; children: JSX
     </Show>
   );
 };
-

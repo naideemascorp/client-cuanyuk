@@ -1,10 +1,15 @@
+import { Toast, type ToastState } from "@/components/toast";
+import { useAuth } from "@/state/auth";
+import { api } from "@/utils/api";
 import { useNavigate } from "@solidjs/router";
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
-import { Toast, type ToastState } from "../components/toast";
-import { useAuth } from "../state/auth";
-import { api } from "../utils/api";
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 
-type IpEntry = { id: string; ip: string; note: string | null; status: "ACTIVE" | "INACTIVE" | "PENDING" | "DELETED" };
+type IpEntry = {
+  id: string;
+  deviceId: string;
+  note: string | null;
+  status: "ACTIVE" | "INACTIVE" | "PENDING" | "DELETED";
+};
 
 export default function AdminIp() {
   const auth = useAuth();
@@ -20,25 +25,25 @@ export default function AdminIp() {
   const [statusFilter, setStatusFilter] = createSignal<"ALL" | "WHITELIST" | "BACKLIST">("ALL");
   const [page, setPage] = createSignal(1);
   const [toast, setToast] = createSignal<ToastState>(null);
-  let toastTimer: number | null = null;
+  let toastTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
 
   const closeToast = () => {
-    if (toastTimer) window.clearTimeout(toastTimer);
+    if (toastTimer) globalThis.clearTimeout(toastTimer);
     toastTimer = null;
     setToast(null);
   };
 
   const showToast = (kind: NonNullable<ToastState>["kind"], message: string) => {
-    if (toastTimer) window.clearTimeout(toastTimer);
+    if (toastTimer) globalThis.clearTimeout(toastTimer);
     toastTimer = null;
     setToast({ id: Date.now(), kind, message });
-    toastTimer = window.setTimeout(() => setToast(null), 5000);
+    toastTimer = globalThis.setTimeout(() => setToast(null), 5000);
   };
 
   const refresh = async () => {
     setLoading(true);
     try {
-      const res = await api.get<{ entries: IpEntry[] }>("/admin/ips");
+      const res = await api.get<{ entries: IpEntry[] }>("/admin/devices");
       setEntries(res.entries ?? []);
     } catch (e) {
       showToast("error", e instanceof Error ? e.message : "LOAD_FAILED");
@@ -52,11 +57,17 @@ export default function AdminIp() {
     const f = statusFilter();
     return entries().filter((e) => {
       const statusOk =
-        f === "ALL" ? true : f === "WHITELIST" ? e.status === "ACTIVE" : f === "BACKLIST" ? e.status === "INACTIVE" : true;
+        f === "ALL"
+          ? true
+          : f === "WHITELIST"
+            ? e.status === "ACTIVE"
+            : f === "BACKLIST"
+              ? e.status === "INACTIVE"
+              : true;
       if (!statusOk) return false;
       if (!q) return true;
       const noteText = (e.note ?? "").toLowerCase();
-      return e.ip.toLowerCase().includes(q) || noteText.includes(q);
+      return e.deviceId.toLowerCase().includes(q) || noteText.includes(q);
     });
   });
 
@@ -85,11 +96,11 @@ export default function AdminIp() {
       return;
     }
     void refresh();
-    const id = window.setInterval(() => {
+    const id = globalThis.setInterval(() => {
       if (loading() || saving()) return;
       void refresh();
     }, 10000);
-    return () => window.clearInterval(id);
+    return () => globalThis.clearInterval(id);
   });
 
   const save = async () => {
@@ -98,7 +109,11 @@ export default function AdminIp() {
     setSaving(true);
     showToast("progress", "Submitting…");
     try {
-      await api.post("/admin/ips", { ip: ipVal, status: status(), note: note().trim() || undefined });
+      await api.post("/admin/devices", {
+        deviceId: ipVal,
+        status: status(),
+        note: note().trim() || undefined,
+      });
       showToast("success", "Submitted.");
       setIp("");
       setNote("");
@@ -117,7 +132,12 @@ export default function AdminIp() {
         <div class="panelInner">
           <div class="title">
             <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap">
-              <button class="btn" type="button" onClick={() => navigate("/")} disabled={saving() || loading()}>
+              <button
+                class="btn"
+                type="button"
+                onClick={() => navigate("/")}
+                disabled={saving() || loading()}
+              >
                 Back
               </button>
               <h1 style="margin: 0">IP Access Control</h1>
@@ -127,23 +147,43 @@ export default function AdminIp() {
           <div class="grid">
             <div class="card" style="grid-column: span 5">
               <div class="cardInner" style="display: grid; gap: 12px">
-                <div style="font-weight: 650; letter-spacing: -0.01em">Add / Update IP</div>
+                <div style="font-weight: 650; letter-spacing: -0.01em">Add / Update Device</div>
                 <div class="field">
-                  <label>IP Address</label>
-                  <input value={ip()} onInput={(e) => setIp(e.currentTarget.value)} placeholder="e.g. 203.0.113.10" />
+                  <label for="ip_address">Device ID</label>
+                  <input
+                    id="ip_address"
+                    value={ip()}
+                    onInput={(e) => setIp(e.currentTarget.value)}
+                    placeholder="e.g. 7f06b84f-10c9-0ace-952e-5cf24d5ad4aa"
+                  />
                 </div>
                 <div class="field">
-                  <label>Status</label>
-                  <select class="select" value={status()} onChange={(e) => setStatus(e.currentTarget.value as "ACTIVE" | "INACTIVE")}>
+                  <label for="ip_status">Status</label>
+                  <select
+                    id="ip_status"
+                    class="select"
+                    value={status()}
+                    onChange={(e) => setStatus(e.currentTarget.value as "ACTIVE" | "INACTIVE")}
+                  >
                     <option value="ACTIVE">Whitelist</option>
                     <option value="INACTIVE">Blacklist</option>
                   </select>
                 </div>
                 <div class="field">
-                  <label>Remarks</label>
-                  <input value={note()} onInput={(e) => setNote(e.currentTarget.value)} placeholder="e.g. Office Wi‑Fi" />
+                  <label for="ip_remarks">Remarks</label>
+                  <input
+                    id="ip_remarks"
+                    value={note()}
+                    onInput={(e) => setNote(e.currentTarget.value)}
+                    placeholder="e.g. Office Wi‑Fi"
+                  />
                 </div>
-                <button class="btn btnPrimary" disabled={saving() || ip().trim().length < 3} onClick={() => void save()}>
+                <button
+                  class="btn btnPrimary"
+                  type="button"
+                  disabled={saving() || ip().trim().length < 3}
+                  onClick={() => void save()}
+                >
                   <span style="display: inline-flex; gap: 10px; align-items: center">
                     {saving() ? <span class="spinner" /> : null}
                     <span>{saving() ? "Submitting…" : "Submit"}</span>
@@ -155,12 +195,25 @@ export default function AdminIp() {
             <div class="card" style="grid-column: span 7">
               <div class="cardInner" style="display: grid; gap: 12px">
                 <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
-                  <div style="font-weight: 650; letter-spacing: -0.01em">IP Lists</div>
-                  <button class="btn" disabled={loading()} onClick={() => void refresh()}>
+                  <div style="font-weight: 650; letter-spacing: -0.01em">Device Lists</div>
+                  <button
+                    class="btn"
+                    type="button"
+                    disabled={loading()}
+                    onClick={() => void refresh()}
+                  >
                     <span style="display: inline-flex; gap: 10px; align-items: center">
                       {loading() ? <span class="spinner" /> : null}
                       {!loading() ? (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                        >
+                          <title>Refresh</title>
                           <path d="M21 12a9 9 0 1 1-2.64-6.36" />
                           <path d="M21 3v6h-6" />
                         </svg>
@@ -172,15 +225,39 @@ export default function AdminIp() {
 
                 <div style="display: grid; grid-template-columns: 1fr 180px; gap: 10px">
                   <div class="field" style="margin: 0">
-                    <label>Search</label>
-                    <input value={query()} onInput={(e) => setQuery(e.currentTarget.value)} placeholder="Search IP or remarks" />
+                    <label for="ip_search">Search</label>
+                    <div class="inputIconWrap">
+                      <input
+                        id="ip_search"
+                        value={query()}
+                        onInput={(e) => setQuery(e.currentTarget.value)}
+                        placeholder="Search device ID or remarks"
+                      />
+                      <span class="inputIcon" aria-hidden="true">
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                        >
+                          <title>Search</title>
+                          <circle cx="11" cy="11" r="7" />
+                          <path d="M21 21l-4.3-4.3" />
+                        </svg>
+                      </span>
+                    </div>
                   </div>
                   <div class="field" style="margin: 0">
-                    <label>Status</label>
+                    <label for="ip_status_filter">Status</label>
                     <select
+                      id="ip_status_filter"
                       class="select"
                       value={statusFilter()}
-                      onChange={(e) => setStatusFilter(e.currentTarget.value as "ALL" | "WHITELIST" | "BACKLIST")}
+                      onChange={(e) =>
+                        setStatusFilter(e.currentTarget.value as "ALL" | "WHITELIST" | "BACKLIST")
+                      }
                     >
                       <option value="ALL">All</option>
                       <option value="WHITELIST">Whitelist</option>
@@ -199,13 +276,28 @@ export default function AdminIp() {
                             <div class="card" style="padding: 0">
                               <div class="cardInner" style="display: grid; gap: 10px">
                                 <div style="display: flex; gap: 10px; align-items: baseline; justify-content: space-between">
-                                  <div class="skeleton" style="height: 14px; width: 46%; border-radius: 10px" />
-                                  <div class="skeleton" style="height: 22px; width: 92px; border-radius: 999px" />
+                                  <div
+                                    class="skeleton"
+                                    style="height: 14px; width: 46%; border-radius: 10px"
+                                  />
+                                  <div
+                                    class="skeleton"
+                                    style="height: 22px; width: 92px; border-radius: 999px"
+                                  />
                                 </div>
-                                <div class="skeleton" style="height: 12px; width: 62%; border-radius: 10px" />
+                                <div
+                                  class="skeleton"
+                                  style="height: 12px; width: 62%; border-radius: 10px"
+                                />
                                 <div style="display: flex; gap: 10px; flex-wrap: wrap">
-                                  <div class="skeleton" style="height: 38px; width: 92px; border-radius: 14px" />
-                                  <div class="skeleton" style="height: 38px; width: 110px; border-radius: 14px" />
+                                  <div
+                                    class="skeleton"
+                                    style="height: 38px; width: 92px; border-radius: 14px"
+                                  />
+                                  <div
+                                    class="skeleton"
+                                    style="height: 38px; width: 110px; border-radius: 14px"
+                                  />
                                 </div>
                               </div>
                             </div>
@@ -220,54 +312,93 @@ export default function AdminIp() {
                   <div class="ipListScroll">
                     <div style="display: grid; gap: 10px">
                       <For each={paged()}>
-                      {(e) => (
-                        <div
-                          style="border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 12px; display: grid; gap: 8px"
-                        >
-                          <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
-                            <div style="font-weight: 700; letter-spacing: -0.01em">{e.ip}</div>
-                            <span class={`statusPill ${e.status === "ACTIVE" ? "statusActive" : "statusInactive"}`}>
-                              {e.status === "ACTIVE" ? "Whitelist" : "Blacklist"}
-                            </span>
+                        {(e) => (
+                          <div style="border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 12px; display: grid; gap: 8px">
+                            <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
+                              <div style="font-weight: 700; letter-spacing: -0.01em">
+                                {e.deviceId}
+                              </div>
+                              <span
+                                class={`statusPill ${e.status === "ACTIVE" ? "statusActive" : "statusInactive"}`}
+                              >
+                                {e.status === "ACTIVE" ? "Whitelist" : "Blacklist"}
+                              </span>
+                            </div>
+                            <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.4">
+                              {e.note ?? "—"}
+                            </div>
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap">
+                              <button
+                                class="btn"
+                                type="button"
+                                disabled={saving()}
+                                onClick={() => {
+                                  setIp(e.deviceId);
+                                  setNote(e.note ?? "");
+                                  setStatus(e.status === "ACTIVE" ? "ACTIVE" : "INACTIVE");
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                class="btn"
+                                type="button"
+                                disabled={saving()}
+                                onClick={() =>
+                                  void api
+                                    .post("/admin/devices", {
+                                      deviceId: e.deviceId,
+                                      status: "ACTIVE",
+                                      note: e.note ?? undefined,
+                                    })
+                                    .then(refresh)
+                                }
+                              >
+                                Whitelist
+                              </button>
+                              <button
+                                class="btn"
+                                type="button"
+                                disabled={saving()}
+                                onClick={() =>
+                                  void api
+                                    .post("/admin/devices", {
+                                      deviceId: e.deviceId,
+                                      status: "INACTIVE",
+                                      note: e.note ?? undefined,
+                                    })
+                                    .then(refresh)
+                                }
+                              >
+                                Blacklist
+                              </button>
+                            </div>
                           </div>
-                          <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.4">{e.note ?? "—"}</div>
-                          <div style="display: flex; gap: 10px; flex-wrap: wrap">
-                            <button
-                              class="btn"
-                              disabled={saving()}
-                              onClick={() => {
-                                setIp(e.ip);
-                                setNote(e.note ?? "");
-                                setStatus(e.status === "ACTIVE" ? "ACTIVE" : "INACTIVE");
-                              }}
-                            >
-                              Edit
-                            </button>
-                            <button class="btn" disabled={saving()} onClick={() => void api.post("/admin/ips", { ip: e.ip, status: "ACTIVE", note: e.note ?? undefined }).then(refresh)}>
-                              Whitelist
-                            </button>
-                            <button
-                              class="btn"
-                              disabled={saving()}
-                              onClick={() => void api.post("/admin/ips", { ip: e.ip, status: "INACTIVE", note: e.note ?? undefined }).then(refresh)}
-                            >
-                              Blacklist
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </For>
+                        )}
+                      </For>
                     </div>
                   </div>
                   <div style="display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap">
                     <div style="color: rgba(250,250,255,0.62); font-size: 13px">
-                      Page {page()} of {totalPages()} • Showing {Math.min(pageSize, filtered().length - (page() - 1) * pageSize)} of {filtered().length}
+                      Page {page()} of {totalPages()} • Showing{" "}
+                      {Math.min(pageSize, filtered().length - (page() - 1) * pageSize)} of{" "}
+                      {filtered().length}
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center">
-                      <button class="btn" disabled={page() <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                      <button
+                        class="btn"
+                        type="button"
+                        disabled={page() <= 1}
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      >
                         Prev
                       </button>
-                      <button class="btn" disabled={page() >= totalPages()} onClick={() => setPage((p) => Math.min(totalPages(), p + 1))}>
+                      <button
+                        class="btn"
+                        type="button"
+                        disabled={page() >= totalPages()}
+                        onClick={() => setPage((p) => Math.min(totalPages(), p + 1))}
+                      >
                         Next
                       </button>
                     </div>

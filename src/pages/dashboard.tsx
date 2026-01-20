@@ -1,9 +1,11 @@
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
-import { api } from "../utils/api";
-import { useAuth } from "../state/auth";
-import { Modal } from "../components/modal";
-import { Toast, type ToastState } from "../components/toast";
-import { useNavigate, type RouteSectionProps } from "@solidjs/router";
+import { ImageDropzone } from "@/components/image-dropzone";
+import { Modal } from "@/components/modal";
+import type { ToastKind } from "@/components/toast";
+import { useAuth } from "@/state/auth";
+import { useToast } from "@/state/toast";
+import { api } from "@/utils/api";
+import { type RouteSectionProps, useNavigate } from "@solidjs/router";
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 
 type Merchant = { id: string; name: string; category: string; pictureUrl: string | null };
 type PaymentItem = {
@@ -20,9 +22,11 @@ type PaymentItem = {
 
 const computeWsBase = () => {
   const explicit = import.meta.env.VITE_WS_BASE_URL;
-  const isHttpsPage = typeof window !== "undefined" && window.location?.protocol === "https:";
+  const isHttpsPage =
+    typeof globalThis.window !== "undefined" && globalThis.location?.protocol === "https:";
   if (explicit) {
-    if (isHttpsPage && explicit.startsWith("ws://")) return `wss://${explicit.slice("ws://".length)}`;
+    if (isHttpsPage && explicit.startsWith("ws://"))
+      return `wss://${explicit.slice("ws://".length)}`;
     return explicit;
   }
 
@@ -48,7 +52,7 @@ const groupByCategory = (merchants: Merchant[]) => {
   }
   return Array.from(map.entries()).map(([category, ms]) => ({
     category,
-    merchants: ms.sort((a, b) => a.name.localeCompare(b.name))
+    merchants: ms.slice().sort((a: Merchant, b: Merchant) => a.name.localeCompare(b.name)),
   }));
 };
 
@@ -56,6 +60,7 @@ type DashboardProps = { publicToken?: string } & Partial<RouteSectionProps<unkno
 
 export default function Dashboard(props: DashboardProps) {
   const auth = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const publicToken = props.publicToken;
   const [merchants, setMerchants] = createSignal<Merchant[]>([]);
@@ -68,23 +73,31 @@ export default function Dashboard(props: DashboardProps) {
   const [newMerchantCategory, setNewMerchantCategory] = createSignal("");
   const [newMerchantFile, setNewMerchantFile] = createSignal<File | null>(null);
   const [newCategoryName, setNewCategoryName] = createSignal("");
-  const [categoriesList, setCategoriesList] = createSignal<{ id: string | null; name: string }[]>([]);
+  const [categoriesList, setCategoriesList] = createSignal<{ id: string | null; name: string }[]>(
+    [],
+  );
   const [postKind, setPostKind] = createSignal<"LINK" | "QRIS">("LINK");
   const [postMerchantId, setPostMerchantId] = createSignal<string>("");
   const [postExpiration, setPostExpiration] = createSignal<string>("");
   const [postLink, setPostLink] = createSignal<string>("");
   const [postQrisFile, setPostQrisFile] = createSignal<File | null>(null);
   const [postTotalAmount, setPostTotalAmount] = createSignal<string>("");
-  const [toast, setToast] = createSignal<ToastState>(null);
-  const [action, setAction] = createSignal<
-    { kind: "add_category" | "add_merchant" | "post" | "deactivate" | "signout"; id?: string } | null
-  >(null);
+  const [merchantUploadProgress, setMerchantUploadProgress] = createSignal<number | null>(null);
+  const [qrisUploadProgress, setQrisUploadProgress] = createSignal<number | null>(null);
+  const [touchedCategoryName, setTouchedCategoryName] = createSignal(false);
+  const [touchedMerchantName, setTouchedMerchantName] = createSignal(false);
+  const [touchedMerchantCategory, setTouchedMerchantCategory] = createSignal(false);
+  const [touchedPaymentMerchant, setTouchedPaymentMerchant] = createSignal(false);
+  const [touchedPaymentAmount, setTouchedPaymentAmount] = createSignal(false);
+  const [touchedPaymentLink, setTouchedPaymentLink] = createSignal(false);
+  const [touchedPaymentQris, setTouchedPaymentQris] = createSignal(false);
+  const [action, setAction] = createSignal<{
+    kind: "add_category" | "add_merchant" | "post" | "deactivate" | "signout";
+    id?: string;
+  } | null>(null);
   const [loading, setLoading] = createSignal(false);
   const [syncing, setSyncing] = createSignal(false);
   let refreshInFlight: Promise<void> | null = null;
-  let toastTimer: number | null = null;
-  let qrisInputEl: HTMLInputElement | undefined;
-  let merchantPicInputEl: HTMLInputElement | undefined;
   const [openItemId, setOpenItemId] = createSignal<string | null>(null);
   const [nowMs, setNowMs] = createSignal(Date.now());
 
@@ -125,18 +138,7 @@ export default function Dashboard(props: DashboardProps) {
     } catch {}
   });
 
-  const closeToast = () => {
-    if (toastTimer) window.clearTimeout(toastTimer);
-    toastTimer = null;
-    setToast(null);
-  };
-
-  const showToast = (kind: NonNullable<ToastState>["kind"], message: string) => {
-    if (toastTimer) window.clearTimeout(toastTimer);
-    toastTimer = null;
-    setToast({ id: Date.now() + Math.floor(Math.random() * 1000), kind, message });
-    toastTimer = window.setTimeout(() => setToast(null), 5000);
-  };
+  const showToast = (kind: ToastKind, message: string) => toast.showToast(kind, message);
 
   const isAction = (kind: NonNullable<ReturnType<typeof action>>["kind"], id?: string) => {
     const a = action();
@@ -148,15 +150,19 @@ export default function Dashboard(props: DashboardProps) {
 
   const formatIdr = (n: number) => {
     try {
-      return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+      return new Intl.NumberFormat("id-ID", {
+        style: "currency",
+        currency: "IDR",
+        maximumFractionDigits: 0,
+      }).format(n);
     } catch {
       return `Rp ${n}`;
     }
   };
 
   createEffect(() => {
-    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
-    return () => window.clearInterval(id);
+    const id = globalThis.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => globalThis.clearInterval(id);
   });
 
   const formatCountdown = (expiresAt: string | null) => {
@@ -209,25 +215,36 @@ export default function Dashboard(props: DashboardProps) {
   <text x="560" y="390" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial" font-size="28" font-weight="500" fill="rgba(250,250,255,0.62)">Please upload again or open the link.</text>
   <g opacity="0.85">
     <rect x="560" y="450" width="520" height="88" rx="22" fill="rgba(0,0,0,0.22)" stroke="rgba(255,255,255,0.14)"/>
-    <text x="820" y="508" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial" font-size="28" font-weight="700" fill="rgba(250,250,255,0.82)">Open QRIS Image</text>
+    <text x="820" y="508" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial" font-size="28" font-weight="700" fill="rgba(250,250,255,0.82)">Open</text>
   </g>
 </svg>`;
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   };
 
-  const fileToBase64 = async (file: File) => {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    let bin = "";
-    for (const b of bytes) bin += String.fromCharCode(b);
-    return btoa(bin);
-  };
+  const fileToBase64 = async (file: File, onProgress?: (progress: number) => void) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("READ_FAILED"));
+      reader.onprogress = (e) => {
+        if (!e.lengthComputable) return;
+        const p = Math.round((e.loaded / e.total) * 100);
+        onProgress?.(p);
+      };
+      reader.onload = () => {
+        const raw = String(reader.result ?? "");
+        const i = raw.indexOf("base64,");
+        if (i < 0) return reject(new Error("READ_FAILED"));
+        resolve(raw.slice(i + "base64,".length));
+      };
+      reader.readAsDataURL(file);
+    });
 
   const openUrl = (id: string, url: string) => {
     setOpenItemId(id);
     try {
       window.open(url, "_blank", "noopener,noreferrer");
     } catch {}
-    window.setTimeout(() => {
+    globalThis.setTimeout(() => {
       if (openItemId() === id) setOpenItemId(null);
     }, 700);
   };
@@ -258,7 +275,7 @@ export default function Dashboard(props: DashboardProps) {
     try {
       if (publicToken) {
         const res = await api.get<{ ok: boolean; merchants?: Merchant[]; items?: PaymentItem[] }>(
-          `/public/dashboard/${encodeURIComponent(publicToken!)}`
+          `/public/dashboard/${encodeURIComponent(publicToken)}`,
         );
         if (!res.ok) {
           setNotFound(true);
@@ -272,12 +289,15 @@ export default function Dashboard(props: DashboardProps) {
 
       type Unauthorized = { ok: false; code: "UNAUTHORIZED" };
       const isUnauthorized = (v: unknown): v is Unauthorized =>
-        Boolean(v) && typeof v === "object" && (v as { ok?: unknown }).ok === false && (v as { code?: unknown }).code === "UNAUTHORIZED";
+        Boolean(v) &&
+        typeof v === "object" &&
+        (v as { ok?: unknown }).ok === false &&
+        (v as { code?: unknown }).code === "UNAUTHORIZED";
 
       const [mRaw, pRaw, cRaw] = await Promise.all([
         api.get<unknown>("/merchants/"),
         api.get<unknown>("/payments/active"),
-        api.get<unknown>("/categories/")
+        api.get<unknown>("/categories/"),
       ]);
 
       if (isUnauthorized(mRaw) || isUnauthorized(pRaw) || isUnauthorized(cRaw)) {
@@ -297,7 +317,8 @@ export default function Dashboard(props: DashboardProps) {
       setItems(nextItems.filter((i) => i.status === "ACTIVE"));
       setCategoriesList(nextCategories);
       if (!postMerchantId() && nextMerchants.length) setPostMerchantId(nextMerchants[0].id);
-      if (!newMerchantCategory() && nextCategories.length) setNewMerchantCategory(nextCategories[0].name);
+      if (!newMerchantCategory() && nextCategories.length)
+        setNewMerchantCategory(nextCategories[0].name);
     } catch (e) {
       if (publicToken) {
         setNotFound(true);
@@ -317,7 +338,7 @@ export default function Dashboard(props: DashboardProps) {
     if (opts.showSpinner) setSyncing(true);
     const guardId =
       opts.showSpinner || opts.showSkeleton
-        ? window.setTimeout(() => {
+        ? globalThis.setTimeout(() => {
             if (!refreshInFlight) return;
             setSyncing(false);
             setLoading(false);
@@ -330,7 +351,7 @@ export default function Dashboard(props: DashboardProps) {
       await refreshInFlight;
     } finally {
       refreshInFlight = null;
-      if (guardId) window.clearTimeout(guardId);
+      if (guardId) globalThis.clearTimeout(guardId);
       if (opts.showSkeleton) setLoading(false);
       if (opts.showSpinner) setSyncing(false);
     }
@@ -349,8 +370,8 @@ export default function Dashboard(props: DashboardProps) {
     } catch {
       ws = null;
     }
-    let pingTimer: number | null = null;
-    let pollTimer: number | null = null;
+    let pingTimer: ReturnType<typeof globalThis.setInterval> | null = null;
+    let pollTimer: ReturnType<typeof globalThis.setInterval> | null = null;
     let lastSoftSyncAt = 0;
     if (ws) {
       ws.addEventListener("message", (ev) => {
@@ -365,18 +386,18 @@ export default function Dashboard(props: DashboardProps) {
         } catch {}
       });
       ws.addEventListener("open", () => {
-        pingTimer = window.setInterval(() => {
+        pingTimer = globalThis.setInterval(() => {
           try {
             ws?.send(JSON.stringify({ type: "ping" }));
           } catch {}
         }, 10000);
       });
       ws.addEventListener("close", () => {
-        if (pingTimer) window.clearInterval(pingTimer);
+        if (pingTimer) globalThis.clearInterval(pingTimer);
         pingTimer = null;
       });
     }
-    pollTimer = window.setInterval(() => {
+    pollTimer = globalThis.setInterval(() => {
       if (action()) return;
       const now = Date.now();
       if (now - lastSoftSyncAt < 10_000) return;
@@ -384,9 +405,9 @@ export default function Dashboard(props: DashboardProps) {
       void refresh({ showSpinner: true, showSkeleton: false });
     }, 10000);
     return () => {
-      if (pingTimer) window.clearInterval(pingTimer);
+      if (pingTimer) globalThis.clearInterval(pingTimer);
       pingTimer = null;
-      if (pollTimer) window.clearInterval(pollTimer);
+      if (pollTimer) globalThis.clearInterval(pollTimer);
       pollTimer = null;
       try {
         ws?.close();
@@ -411,6 +432,92 @@ export default function Dashboard(props: DashboardProps) {
   });
 
   const categories = createMemo(() => groupByCategory(merchants()));
+  const isCategoryNameValid = createMemo(() => newCategoryName().trim().length >= 2);
+  const categoryNameError = createMemo(() =>
+    touchedCategoryName() && !isCategoryNameValid() ? "Please fill in this field." : null,
+  );
+
+  const isMerchantNameValid = createMemo(() => newMerchantName().trim().length >= 2);
+  const isMerchantCategoryValid = createMemo(
+    () => newMerchantCategory().trim().length > 0 && categoriesList().length > 0,
+  );
+  const merchantNameError = createMemo(() =>
+    touchedMerchantName() && !isMerchantNameValid() ? "Please fill in this field." : null,
+  );
+  const merchantCategoryError = createMemo(() =>
+    touchedMerchantCategory() && !isMerchantCategoryValid()
+      ? categoriesList().length === 0
+        ? "Please create a category first."
+        : "Please choose a value."
+      : null,
+  );
+
+  const paymentAmount = createMemo(() => {
+    const amountRaw = postTotalAmount().replaceAll(/[^\d]/g, "");
+    return amountRaw ? Number(amountRaw) : Number.NaN;
+  });
+  const isPaymentAmountValid = createMemo(
+    () => Number.isFinite(paymentAmount()) && paymentAmount() > 0,
+  );
+  const isPaymentMerchantValid = createMemo(() => postMerchantId().trim().length > 0);
+  const isPaymentLinkValid = createMemo(() =>
+    postKind() === "LINK" ? postLink().trim().length >= 8 : true,
+  );
+  const isPaymentQrisValid = createMemo(() =>
+    postKind() === "QRIS" ? Boolean(postQrisFile()) : true,
+  );
+  const canSubmitPayment = createMemo(
+    () =>
+      !readOnly() &&
+      !action() &&
+      isPaymentMerchantValid() &&
+      isPaymentAmountValid() &&
+      isPaymentLinkValid() &&
+      isPaymentQrisValid(),
+  );
+  const paymentMerchantError = createMemo(() =>
+    touchedPaymentMerchant() && !isPaymentMerchantValid() ? "Please choose a value." : null,
+  );
+  const paymentAmountError = createMemo(() =>
+    touchedPaymentAmount() && !isPaymentAmountValid() ? "Please fill in this field." : null,
+  );
+  const paymentLinkError = createMemo(() =>
+    touchedPaymentLink() && postKind() === "LINK" && !isPaymentLinkValid()
+      ? "Please fill in this field."
+      : null,
+  );
+  const paymentQrisError = createMemo(() =>
+    touchedPaymentQris() && postKind() === "QRIS" && !isPaymentQrisValid()
+      ? "Please upload an image."
+      : null,
+  );
+  const categoryPageSize = 10;
+  const [categoryPage, setCategoryPage] = createSignal(1);
+  const categoryTotalPages = createMemo(() =>
+    Math.max(1, Math.ceil(categories().length / categoryPageSize)),
+  );
+  createEffect(() => {
+    const p = categoryPage();
+    const tp = categoryTotalPages();
+    if (p > tp) setCategoryPage(tp);
+    if (p < 1) setCategoryPage(1);
+  });
+  const categoriesPaged = createMemo(() => {
+    const start = (categoryPage() - 1) * categoryPageSize;
+    return categories().slice(start, start + categoryPageSize);
+  });
+  const [visibleMerchantsByCategory, setVisibleMerchantsByCategory] = createSignal<
+    Map<string, number>
+  >(new Map());
+  const visibleMerchantsCount = (categoryName: string) =>
+    visibleMerchantsByCategory().get(categoryName) ?? 10;
+  const loadMoreMerchants = (categoryName: string) => {
+    setVisibleMerchantsByCategory((prev) => {
+      const next = new Map(prev);
+      next.set(categoryName, visibleMerchantsCount(categoryName) + 10);
+      return next;
+    });
+  };
 
   const addMerchant = async () => {
     if (readOnly()) return;
@@ -421,8 +528,18 @@ export default function Dashboard(props: DashboardProps) {
     setAction({ kind: "add_merchant" });
     showToast("progress", "Adding merchant…");
     try {
-      const imageBase64 = newMerchantFile() ? await fileToBase64(newMerchantFile()!) : undefined;
-      await api.post("/merchants/", { name: newMerchantName(), category: newMerchantCategory(), imageBase64 });
+      const file = newMerchantFile();
+      setMerchantUploadProgress(file ? 0 : null);
+      const imageBase64 = file
+        ? await fileToBase64(file, (p) => setMerchantUploadProgress(Math.round(p * 0.7)))
+        : undefined;
+      if (file) setMerchantUploadProgress(85);
+      await api.post("/merchants/", {
+        name: newMerchantName(),
+        category: newMerchantCategory(),
+        imageBase64,
+      });
+      if (file) setMerchantUploadProgress(100);
       setNewMerchantName("");
       setNewMerchantFile(null);
       showToast("success", "Merchant added.");
@@ -430,6 +547,7 @@ export default function Dashboard(props: DashboardProps) {
     } catch (e) {
       showToast("error", e instanceof Error ? e.message : "ADD_MERCHANT_FAILED");
     } finally {
+      globalThis.setTimeout(() => setMerchantUploadProgress(null), 650);
       setAction(null);
     }
   };
@@ -458,8 +576,7 @@ export default function Dashboard(props: DashboardProps) {
       showToast("error", "Add a merchant first.");
       return;
     }
-    const amountRaw = postTotalAmount().replaceAll(/[^\d]/g, "");
-    const amount = amountRaw ? Number(amountRaw) : NaN;
+    const amount = paymentAmount();
     if (!Number.isFinite(amount) || amount <= 0) {
       showToast("error", "Total amount is required.");
       return;
@@ -472,7 +589,7 @@ export default function Dashboard(props: DashboardProps) {
           merchantId: postMerchantId(),
           paymentUrl: postLink(),
           totalAmount: amount,
-          expiration: postExpiration().trim() === "" ? undefined : postExpiration().trim()
+          expiration: postExpiration().trim() === "" ? undefined : postExpiration().trim(),
         });
         setPostLink("");
         setPostExpiration("");
@@ -481,13 +598,18 @@ export default function Dashboard(props: DashboardProps) {
       } else {
         const f = postQrisFile();
         if (!f) throw new Error("Missing QRIS image.");
-        const imageBase64 = await fileToBase64(f);
+        setQrisUploadProgress(0);
+        const imageBase64 = await fileToBase64(f, (p) =>
+          setQrisUploadProgress(Math.round(p * 0.7)),
+        );
+        setQrisUploadProgress(85);
         await api.post("/payments/qris", {
           merchantId: postMerchantId(),
           imageBase64,
           totalAmount: amount,
-          expiration: postExpiration().trim() === "" ? undefined : postExpiration().trim()
+          expiration: postExpiration().trim() === "" ? undefined : postExpiration().trim(),
         });
+        setQrisUploadProgress(100);
         setPostQrisFile(null);
         setPostExpiration("");
         setPostTotalAmount("");
@@ -497,6 +619,7 @@ export default function Dashboard(props: DashboardProps) {
     } catch (e) {
       showToast("error", e instanceof Error ? e.message : "POST_FAILED");
     } finally {
+      globalThis.setTimeout(() => setQrisUploadProgress(null), 650);
       setAction(null);
     }
   };
@@ -550,9 +673,14 @@ export default function Dashboard(props: DashboardProps) {
               </div>
               <div class="notFoundTitle">404 • Not Found</div>
               <div class="notFoundText">
-                This link doesn’t exist anymore (or it’s not available from your network). Ask the owner to generate a new one.
+                This link doesn’t exist anymore (or it’s not available from your network). Ask the
+                owner to generate a new one.
               </div>
-              <a class="btn btnHero" href="/" style="width: min(320px, 100%); display: inline-flex; justify-content: center">
+              <a
+                class="btn btnHero"
+                href="/"
+                style="width: min(320px, 100%); display: inline-flex; justify-content: center"
+              >
                 Go Home
               </a>
             </div>
@@ -591,6 +719,7 @@ export default function Dashboard(props: DashboardProps) {
             >
               <button
                 class="btn"
+                type="button"
                 onClick={() => void refresh({ showSpinner: true, showSkeleton: false })}
                 disabled={syncing() || Boolean(action())}
                 style="width: 100%"
@@ -598,7 +727,15 @@ export default function Dashboard(props: DashboardProps) {
                 <span style="display: inline-flex; gap: 10px; align-items: center; justify-content: center; width: 100%">
                   {syncing() ? <span class="spinner" /> : null}
                   {!syncing() ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <title>Refresh</title>
                       <path d="M21 12a9 9 0 1 1-2.64-6.36" />
                       <path d="M21 3v6h-6" />
                     </svg>
@@ -607,11 +744,29 @@ export default function Dashboard(props: DashboardProps) {
                 </span>
               </button>
               <Show when={!readOnly()}>
-                <Show when={!adminAccessLoading()} fallback={<div class="skeleton" style="height: 40px; border-radius: 14px" />}>
+                <Show
+                  when={!adminAccessLoading()}
+                  fallback={<div class="skeleton" style="height: 40px; border-radius: 14px" />}
+                >
                   <Show when={hasAdminAccess()}>
-                    <button class="btn" type="button" onClick={() => (window.location.href = "/admin")} style="width: 100%">
+                    <button
+                      class="btn"
+                      type="button"
+                      onClick={() => {
+                        globalThis.location.href = "/admin";
+                      }}
+                      style="width: 100%"
+                    >
                       <span style="display: inline-flex; gap: 10px; align-items: center; justify-content: center; width: 100%; font: inherit">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                        >
+                          <title>Admin</title>
                           <path d="M12 1l9 4v6c0 5-3.8 9.8-9 12-5.2-2.2-9-7-9-12V5l9-4z" />
                           <path d="M9 12l2 2 4-4" />
                         </svg>
@@ -620,13 +775,26 @@ export default function Dashboard(props: DashboardProps) {
                     </button>
                   </Show>
                 </Show>
-              </Show>
-              <Show when={!readOnly()}>
-                <button class="btn" disabled={isAction("signout")} onClick={() => void signOut()} style="width: 100%">
+
+                <button
+                  class="btn"
+                  type="button"
+                  disabled={isAction("signout")}
+                  onClick={() => void signOut()}
+                  style="width: 100%"
+                >
                   <span style="display: inline-flex; gap: 10px; align-items: center; justify-content: center; width: 100%">
                     {isAction("signout") ? <span class="spinner" /> : null}
                     {!isAction("signout") ? (
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <title>Log out</title>
                         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                         <path d="M16 17l5-5-5-5" />
                         <path d="M21 12H9" />
@@ -654,7 +822,15 @@ export default function Dashboard(props: DashboardProps) {
                 <Show when={!readOnly() && shareUrl()}>
                   <div style="margin-top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
                     <div style="color: rgba(250,250,255,0.62); font-size: 13px">Share link:</div>
-                    <button class="btn btnPrimary" type="button" onClick={() => openUrl("share-open", shareUrl()!)}>
+                    <button
+                      class="btn btnPrimary"
+                      type="button"
+                      onClick={() => {
+                        const url = shareUrl();
+                        if (!url) return;
+                        openUrl("share-open", url);
+                      }}
+                    >
                       <span style="display: inline-flex; gap: 10px; align-items: center">
                         {openItemId() === "share-open" ? <span class="spinner" /> : null}
                         <span>Open</span>
@@ -662,9 +838,12 @@ export default function Dashboard(props: DashboardProps) {
                     </button>
                     <button
                       class="btn btnPrimary"
+                      type="button"
                       onClick={async () => {
                         try {
-                          await navigator.clipboard.writeText(shareUrl()!);
+                          const url = shareUrl();
+                          if (!url) return;
+                          await navigator.clipboard.writeText(url);
                           showToast("success", "Link copied.");
                         } catch {
                           showToast("error", "COPY_FAILED");
@@ -684,7 +863,7 @@ export default function Dashboard(props: DashboardProps) {
                         display: "grid",
                         "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))",
                         gap: "12px",
-                        "margin-top": "14px"
+                        "margin-top": "14px",
                       }}
                     >
                       <For each={[1, 2, 3, 4, 5, 6, 7, 8, 9]}>
@@ -692,13 +871,25 @@ export default function Dashboard(props: DashboardProps) {
                           <div class="card" style="padding: 0">
                             <div class="cardInner" style="display: grid; gap: 10px">
                               <div style="display: flex; gap: 10px; align-items: center">
-                                <div class="skeleton" style="width: 38px; height: 38px; border-radius: 14px" />
+                                <div
+                                  class="skeleton"
+                                  style="width: 38px; height: 38px; border-radius: 14px"
+                                />
                                 <div style="flex: 1; min-width: 0; display: grid; gap: 8px">
-                                  <div class="skeleton" style="height: 14px; width: 62%; border-radius: 10px" />
-                                  <div class="skeleton" style="height: 12px; width: 42%; border-radius: 10px" />
+                                  <div
+                                    class="skeleton"
+                                    style="height: 14px; width: 62%; border-radius: 10px"
+                                  />
+                                  <div
+                                    class="skeleton"
+                                    style="height: 12px; width: 42%; border-radius: 10px"
+                                  />
                                 </div>
                               </div>
-                              <div class="skeleton" style="height: 12px; width: 54%; border-radius: 10px" />
+                              <div
+                                class="skeleton"
+                                style="height: 12px; width: 54%; border-radius: 10px"
+                              />
                             </div>
                           </div>
                         )}
@@ -707,7 +898,7 @@ export default function Dashboard(props: DashboardProps) {
                   }
                 >
                   <div style="display: grid; gap: 14px; margin-top: 14px">
-                    <For each={categories()}>
+                    <For each={categoriesPaged()}>
                       {(cat) => (
                         <div>
                           <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px">
@@ -720,19 +911,26 @@ export default function Dashboard(props: DashboardProps) {
                               display: "grid",
                               "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))",
                               gap: "12px",
-                              "margin-top": "10px"
+                              "margin-top": "10px",
                             }}
                           >
-                            <For each={cat.merchants}>
+                            <For
+                              each={cat.merchants.slice(
+                                0,
+                                Math.max(0, visibleMerchantsCount(cat.category)),
+                              )}
+                            >
                               {(m) => {
-                                const sum = () => summaryByMerchant().get(m.id) ?? { links: 0, qris: 0, active: 0 };
+                                const sum = () =>
+                                  summaryByMerchant().get(m.id) ?? { links: 0, qris: 0, active: 0 };
                                 return (
                                   <button
                                     class="card"
+                                    type="button"
                                     style={{
                                       cursor: "pointer",
                                       padding: "0",
-                                      "text-align": "left"
+                                      "text-align": "left",
                                     }}
                                     onClick={() => {
                                       setSelectedMerchant(m);
@@ -753,15 +951,23 @@ export default function Dashboard(props: DashboardProps) {
                                               img.src = defaultMerchantImage(m.name);
                                             }}
                                           />
-                                          <div
-                                            style="font-weight: 700; letter-spacing: -0.01em; color: rgba(250,250,255,0.92); overflow: hidden; text-overflow: ellipsis; white-space: nowrap"
-                                          >
+                                          <div style="font-weight: 700; letter-spacing: -0.01em; color: rgba(250,250,255,0.92); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
                                             {m.name}
                                           </div>
                                         </div>
                                       </div>
                                       <div style="font-size: 13px; color: rgba(250,250,255,0.78); line-height: 1.4">
-                                        {`${sum().links} links • ${sum().qris} QRIS`}
+                                        <span class="countRow">
+                                          <span class="countPill">
+                                            <span class="countPillLabel">Links</span>
+                                            <span class="countPillValue">{sum().links}</span>
+                                          </span>
+                                          <span class="countDot">•</span>
+                                          <span class="countPill">
+                                            <span class="countPillLabel">QRIS</span>
+                                            <span class="countPillValue">{sum().qris}</span>
+                                          </span>
+                                        </span>
                                       </div>
                                     </div>
                                   </button>
@@ -769,9 +975,44 @@ export default function Dashboard(props: DashboardProps) {
                               }}
                             </For>
                           </div>
+                          <Show when={cat.merchants.length > visibleMerchantsCount(cat.category)}>
+                            <div style="margin-top: 10px">
+                              <button
+                                class="btn"
+                                type="button"
+                                style="width: 100%"
+                                onClick={() => loadMoreMerchants(cat.category)}
+                              >
+                                Load more
+                              </button>
+                            </div>
+                          </Show>
                         </div>
                       )}
                     </For>
+
+                    <Show when={categoryTotalPages() > 1}>
+                      <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap">
+                        <button
+                          class="btn"
+                          type="button"
+                          disabled={categoryPage() <= 1}
+                          onClick={() => setCategoryPage((p) => Math.max(1, p - 1))}
+                        >
+                          Prev
+                        </button>
+                        <button
+                          class="btn"
+                          type="button"
+                          disabled={categoryPage() >= categoryTotalPages()}
+                          onClick={() =>
+                            setCategoryPage((p) => Math.min(categoryTotalPages(), p + 1))
+                          }
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </Show>
                   </div>
                 </Show>
               </div>
@@ -785,10 +1026,31 @@ export default function Dashboard(props: DashboardProps) {
                       Add Category
                     </div>
                     <div class="field">
-                      <label>Name</label>
-                      <input value={newCategoryName()} onInput={(e) => setNewCategoryName(e.currentTarget.value)} placeholder="e.g. Food" />
+                      <label for="add_category_name">
+                        Name<span class="fieldReq">*</span>
+                      </label>
+                      <input
+                        id="add_category_name"
+                        class={categoryNameError() ? "inputError" : undefined}
+                        value={newCategoryName()}
+                        onInput={(e) => setNewCategoryName(e.currentTarget.value)}
+                        onBlur={() => setTouchedCategoryName(true)}
+                        placeholder="e.g. Food"
+                      />
+                      <Show when={categoryNameError()}>
+                        <div class="fieldError">{categoryNameError()}</div>
+                      </Show>
                     </div>
-                    <button class="btn btnPrimary" disabled={newCategoryName().trim().length < 2 || Boolean(action())} onClick={() => void addCategory()}>
+                    <button
+                      class="btn btnPrimary"
+                      type="button"
+                      disabled={!isCategoryNameValid() || Boolean(action())}
+                      onClick={() => {
+                        setTouchedCategoryName(true);
+                        if (!isCategoryNameValid()) return;
+                        void addCategory();
+                      }}
+                    >
                       <span style="display: inline-flex; gap: 10px; align-items: center">
                         {isAction("add_category") ? <span class="spinner" /> : null}
                         <span>{isAction("add_category") ? "Submitting…" : "Submit"}</span>
@@ -803,46 +1065,74 @@ export default function Dashboard(props: DashboardProps) {
                       Add Merchant
                     </div>
                     <div class="field">
-                      <label>Name</label>
-                      <input value={newMerchantName()} onInput={(e) => setNewMerchantName(e.currentTarget.value)} />
+                      <label for="add_merchant_name">
+                        Name<span class="fieldReq">*</span>
+                      </label>
+                      <input
+                        id="add_merchant_name"
+                        class={merchantNameError() ? "inputError" : undefined}
+                        value={newMerchantName()}
+                        onInput={(e) => setNewMerchantName(e.currentTarget.value)}
+                        onBlur={() => setTouchedMerchantName(true)}
+                      />
+                      <Show when={merchantNameError()}>
+                        <div class="fieldError">{merchantNameError()}</div>
+                      </Show>
                     </div>
                     <div class="field">
-                      <label>Category</label>
+                      <label for="add_merchant_category">
+                        Category<span class="fieldReq">*</span>
+                      </label>
                       <Show
                         when={!loading() || categoriesList().length > 0}
                         fallback={<div class="skeleton selectSkeleton" />}
                       >
                         <select
+                          id="add_merchant_category"
                           class="select"
                           style="width: 100%"
+                          classList={{ inputError: Boolean(merchantCategoryError()) }}
                           value={newMerchantCategory()}
                           disabled={categoriesList().length === 0}
                           onChange={(e) => setNewMerchantCategory(e.currentTarget.value)}
+                          onBlur={() => setTouchedMerchantCategory(true)}
                         >
-                          <For each={categoriesList()}>{(c) => <option value={c.name}>{c.name}</option>}</For>
+                          <For each={categoriesList()}>
+                            {(c) => <option value={c.name}>{c.name}</option>}
+                          </For>
                         </select>
+                      </Show>
+                      <Show when={merchantCategoryError()}>
+                        <div class="fieldError">{merchantCategoryError()}</div>
                       </Show>
                     </div>
                     <div class="field">
-                      <label style="display: none">Merchant Picture</label>
-                      <input
-                        ref={(el) => (merchantPicInputEl = el)}
-                        type="file"
-                        accept="image/*"
-                        style="display: none"
-                        onChange={(e) => setNewMerchantFile(e.currentTarget.files?.[0] ?? null)}
+                      <ImageDropzone
+                        id="merchant_picture"
+                        label="Merchant icon"
+                        file={newMerchantFile()}
+                        setFile={(f) => {
+                          setNewMerchantFile(f);
+                          setMerchantUploadProgress(null);
+                        }}
+                        supportedExts={["png", "jpg", "jpeg", "gif", "webp"]}
+                        progress={merchantUploadProgress()}
+                        disabled={Boolean(action())}
+                        invalidToast={(m) => showToast("error", m)}
                       />
-                      <div class="filePick">
-                        <div class="filePickName">{newMerchantFile()?.name ?? "Drop your logo here"}</div>
-                        <button class="filePickBtn" type="button" onClick={() => merchantPicInputEl?.click()}>
-                          Choose File
-                        </button>
-                      </div>
                     </div>
                     <button
                       class="btn btnPrimary"
-                      disabled={newMerchantName().trim().length < 2 || categoriesList().length === 0 || Boolean(action())}
-                      onClick={() => void addMerchant()}
+                      type="button"
+                      disabled={
+                        !isMerchantNameValid() || !isMerchantCategoryValid() || Boolean(action())
+                      }
+                      onClick={() => {
+                        setTouchedMerchantName(true);
+                        setTouchedMerchantCategory(true);
+                        if (!isMerchantNameValid() || !isMerchantCategoryValid()) return;
+                        void addMerchant();
+                      }}
                     >
                       <span style="display: inline-flex; gap: 10px; align-items: center">
                         {isAction("add_merchant") ? <span class="spinner" /> : null}
@@ -858,68 +1148,125 @@ export default function Dashboard(props: DashboardProps) {
                       Add Payment Link/QRIS
                     </div>
                     <div style="display: flex; gap: 10px; flex-wrap: wrap">
-                      <button class={`btn ${postKind() === "LINK" ? "btnPrimary" : ""}`} onClick={() => setPostKind("LINK")}>
+                      <button
+                        class={`btn ${postKind() === "LINK" ? "btnPrimary" : ""}`}
+                        type="button"
+                        onClick={() => setPostKind("LINK")}
+                      >
                         Payment Link
                       </button>
-                      <button class={`btn ${postKind() === "QRIS" ? "btnPrimary" : ""}`} onClick={() => setPostKind("QRIS")}>
+                      <button
+                        class={`btn ${postKind() === "QRIS" ? "btnPrimary" : ""}`}
+                        type="button"
+                        onClick={() => setPostKind("QRIS")}
+                      >
                         QRIS
                       </button>
                     </div>
                     <div class="field">
-                      <label>Merchant</label>
-                      <Show when={!loading() || merchants().length > 0} fallback={<div class="skeleton selectSkeleton" />}>
+                      <label for="add_payment_merchant">
+                        Merchant<span class="fieldReq">*</span>
+                      </label>
+                      <Show
+                        when={!loading() || merchants().length > 0}
+                        fallback={<div class="skeleton selectSkeleton" />}
+                      >
                         <select
+                          id="add_payment_merchant"
                           class="select"
                           style="width: 100%"
+                          classList={{ inputError: Boolean(paymentMerchantError()) }}
                           value={postMerchantId()}
                           onChange={(e) => setPostMerchantId(e.currentTarget.value)}
+                          onBlur={() => setTouchedPaymentMerchant(true)}
                         >
-                          <For each={merchants()}>{(m) => <option value={m.id}>{m.name}</option>}</For>
+                          <For each={merchants()}>
+                            {(m) => <option value={m.id}>{m.name}</option>}
+                          </For>
                         </select>
+                      </Show>
+                      <Show when={paymentMerchantError()}>
+                        <div class="fieldError">{paymentMerchantError()}</div>
                       </Show>
                     </div>
                     <div class="field">
-                      <label>Expiration Time (default: 12H)</label>
+                      <label for="add_payment_expiration">Expiration Time (default: 12H)</label>
                       <input
+                        id="add_payment_expiration"
                         placeholder="12h / 5m / 1h / 1d / lifetime"
                         value={postExpiration()}
                         onInput={(e) => setPostExpiration(e.currentTarget.value)}
                       />
                     </div>
                     <div class="field">
-                      <label>Payment Amount</label>
+                      <label for="add_payment_amount">
+                        Payment Amount<span class="fieldReq">*</span>
+                      </label>
                       <input
+                        id="add_payment_amount"
+                        class={paymentAmountError() ? "inputError" : undefined}
                         inputmode="numeric"
                         value={postTotalAmount()}
                         onInput={(e) => setPostTotalAmount(e.currentTarget.value)}
+                        onBlur={() => setTouchedPaymentAmount(true)}
                         placeholder="e.g. 150000"
                       />
+                      <Show when={paymentAmountError()}>
+                        <div class="fieldError">{paymentAmountError()}</div>
+                      </Show>
                     </div>
                     <Show when={postKind() === "LINK"}>
                       <div class="field">
-                        <label>Payment Link</label>
-                        <input value={postLink()} onInput={(e) => setPostLink(e.currentTarget.value)} placeholder="https://…" />
+                        <label for="add_payment_link">
+                          Payment Link<span class="fieldReq">*</span>
+                        </label>
+                        <input
+                          id="add_payment_link"
+                          class={paymentLinkError() ? "inputError" : undefined}
+                          value={postLink()}
+                          onInput={(e) => setPostLink(e.currentTarget.value)}
+                          onBlur={() => setTouchedPaymentLink(true)}
+                          placeholder="https://…"
+                        />
+                        <Show when={paymentLinkError()}>
+                          <div class="fieldError">{paymentLinkError()}</div>
+                        </Show>
                       </div>
                     </Show>
                     <Show when={postKind() === "QRIS"}>
                       <div class="field">
-                        <label style="display: none">QRIS</label>
-                        <input
-                          ref={(el) => (qrisInputEl = el)}
-                          type="file"
-                          accept="image/*"
-                          style="display: none"
-                          onChange={(e) => setPostQrisFile(e.currentTarget.files?.[0] ?? null)}
+                        <ImageDropzone
+                          id="add_payment_qris"
+                          label="QRIS image"
+                          required
+                          file={postQrisFile()}
+                          setFile={(f) => {
+                            setPostQrisFile(f);
+                            setQrisUploadProgress(null);
+                          }}
+                          supportedExts={["png", "jpg", "jpeg", "gif", "webp"]}
+                          progress={qrisUploadProgress()}
+                          disabled={Boolean(action())}
+                          invalidToast={(m) => showToast("error", m)}
                         />
-                        <div class="filePick">
-                          <div class="filePickName">{postQrisFile()?.name ?? "Drop your QRIS here"}</div>
-                          <button class="filePickBtn" type="button" onClick={() => qrisInputEl?.click()}>
-                            Choose File
-                          </button>
-                        </div>
+                        <Show when={paymentQrisError()}>
+                          <div class="fieldError">{paymentQrisError()}</div>
+                        </Show>
                       </div>
                     </Show>
-                    <button class="btn btnPrimary" disabled={Boolean(action())} onClick={() => void post()}>
+                    <button
+                      class="btn btnPrimary"
+                      type="button"
+                      disabled={!canSubmitPayment()}
+                      onClick={() => {
+                        setTouchedPaymentMerchant(true);
+                        setTouchedPaymentAmount(true);
+                        setTouchedPaymentLink(true);
+                        setTouchedPaymentQris(true);
+                        if (!canSubmitPayment()) return;
+                        void post();
+                      }}
+                    >
                       <span style="display: inline-flex; gap: 10px; align-items: center">
                         {isAction("post") ? <span class="spinner" /> : null}
                         <span>{isAction("post") ? "Submitting…" : "Submit"}</span>
@@ -931,27 +1278,37 @@ export default function Dashboard(props: DashboardProps) {
             </Show>
           </div>
 
-          <Toast toast={toast()} onClose={closeToast} />
-
           <Modal open={Boolean(selectedMerchant())} onClose={() => setSelectedMerchant(null)}>
             <Show when={selectedMerchant()}>
               {(m) => (
                 <div style="display: grid; gap: 14px">
                   <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
                     <div>
-                      <div style="font-weight: 700; letter-spacing: -0.02em; font-size: 20px">{m().name}</div>
-                      <div style="color: rgba(250,250,255,0.62); font-size: 13px; margin-top: 2px">{m().category}</div>
+                      <div style="font-weight: 700; letter-spacing: -0.02em; font-size: 20px">
+                        {m().name}
+                      </div>
+                      <div style="color: rgba(250,250,255,0.62); font-size: 13px; margin-top: 2px">
+                        {m().category}
+                      </div>
                     </div>
-                    <button class="btn" onClick={() => setSelectedMerchant(null)}>
+                    <button class="btn" type="button" onClick={() => setSelectedMerchant(null)}>
                       Close
                     </button>
                   </div>
 
                   <div style="display: flex; gap: 10px; flex-wrap: wrap">
-                    <button class={`btn ${tab() === "LINK" ? "btnPrimary" : ""}`} onClick={() => setTab("LINK")}>
+                    <button
+                      class={`btn ${tab() === "LINK" ? "btnPrimary" : ""}`}
+                      type="button"
+                      onClick={() => setTab("LINK")}
+                    >
                       Payment Links
                     </button>
-                    <button class={`btn ${tab() === "QRIS" ? "btnPrimary" : ""}`} onClick={() => setTab("QRIS")}>
+                    <button
+                      class={`btn ${tab() === "QRIS" ? "btnPrimary" : ""}`}
+                      type="button"
+                      onClick={() => setTab("QRIS")}
+                    >
                       QRIS
                     </button>
                   </div>
@@ -965,7 +1322,7 @@ export default function Dashboard(props: DashboardProps) {
                             style={{
                               display: "grid",
                               gap: "12px",
-                              "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))"
+                              "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))",
                             }}
                           >
                             <For each={[1, 2, 3, 4, 5, 6]}>
@@ -973,11 +1330,23 @@ export default function Dashboard(props: DashboardProps) {
                                 <div class="card" style="padding: 0">
                                   <div class="cardInner" style="display: grid; gap: 10px">
                                     <div style="display: flex; gap: 10px; align-items: baseline; justify-content: space-between">
-                                      <div class="skeleton" style="height: 16px; width: 46%; border-radius: 10px" />
-                                      <div class="skeleton" style="height: 12px; width: 34%; border-radius: 10px" />
+                                      <div
+                                        class="skeleton"
+                                        style="height: 16px; width: 46%; border-radius: 10px"
+                                      />
+                                      <div
+                                        class="skeleton"
+                                        style="height: 12px; width: 34%; border-radius: 10px"
+                                      />
                                     </div>
-                                    <div class="skeleton" style="height: 44px; width: 100%; border-radius: 14px" />
-                                    <div class="skeleton" style="height: 44px; width: 100%; border-radius: 14px" />
+                                    <div
+                                      class="skeleton"
+                                      style="height: 44px; width: 100%; border-radius: 14px"
+                                    />
+                                    <div
+                                      class="skeleton"
+                                      style="height: 44px; width: 100%; border-radius: 14px"
+                                    />
                                   </div>
                                 </div>
                               )}
@@ -987,7 +1356,9 @@ export default function Dashboard(props: DashboardProps) {
                           <div class="emptyCenter">
                             <div class="emptyLogo">CY</div>
                             <div class="emptyTitle">No payments yet</div>
-                            <div class="emptyText">Drop a payment link or QRIS and it’ll show up here.</div>
+                            <div class="emptyText">
+                              Drop a payment link or QRIS and it’ll show up here.
+                            </div>
                           </div>
                         )
                       }
@@ -996,7 +1367,10 @@ export default function Dashboard(props: DashboardProps) {
                         style={{
                           display: "grid",
                           gap: "12px",
-                          "grid-template-columns": tab() === "QRIS" ? "repeat(auto-fit, minmax(260px, 1fr))" : "repeat(auto-fit, minmax(220px, 1fr))"
+                          "grid-template-columns":
+                            tab() === "QRIS"
+                              ? "repeat(auto-fit, minmax(260px, 1fr))"
+                              : "repeat(auto-fit, minmax(220px, 1fr))",
                         }}
                       >
                         <For each={selectedItems()}>
@@ -1015,17 +1389,24 @@ export default function Dashboard(props: DashboardProps) {
                                   class="btn btnWide"
                                   type="button"
                                   disabled={Boolean(action())}
-                                  onClick={() => openUrl(`${it.id}:link`, it.paymentUrl!)}
+                                  onClick={() => {
+                                    const url = it.paymentUrl;
+                                    if (!url) return;
+                                    openUrl(`${it.id}:link`, url);
+                                  }}
                                 >
                                   <span style="display: inline-flex; gap: 10px; align-items: center">
-                                    {openItemId() === `${it.id}:link` ? <span class="spinner" /> : null}
-                                    <span>Open Payment Link</span>
+                                    {openItemId() === `${it.id}:link` ? (
+                                      <span class="spinner" />
+                                    ) : null}
+                                    <span>Open</span>
                                   </span>
                                 </button>
                               </Show>
                               <Show when={it.kind === "QRIS" && it.qrisUrl}>
                                 <img
-                                  src={it.qrisUrl!}
+                                  src={it.qrisUrl ?? defaultQrisImage(m().name)}
+                                  alt="QRIS"
                                   style="width: 100%; max-height: 420px; object-fit: contain; border-radius: 16px; border: 1px solid rgba(255,255,255,0.12)"
                                   onError={(e) => {
                                     const img = e.currentTarget;
@@ -1038,19 +1419,34 @@ export default function Dashboard(props: DashboardProps) {
                                   class="btn btnWide"
                                   type="button"
                                   disabled={Boolean(action())}
-                                  onClick={() => openUrl(`${it.id}:qris`, it.qrisUrl!)}
+                                  onClick={() => {
+                                    const url = it.qrisUrl;
+                                    if (!url) return;
+                                    openUrl(`${it.id}:qris`, url);
+                                  }}
                                 >
                                   <span style="display: inline-flex; gap: 10px; align-items: center">
-                                    {openItemId() === `${it.id}:qris` ? <span class="spinner" /> : null}
-                                    <span>Open QRIS Image</span>
+                                    {openItemId() === `${it.id}:qris` ? (
+                                      <span class="spinner" />
+                                    ) : null}
+                                    <span>Open</span>
                                   </span>
                                 </button>
                               </Show>
                               <Show when={!readOnly() && it.status === "ACTIVE"}>
-                                <button class="btn btnWide" disabled={Boolean(action())} onClick={() => void deactivate(it.id)}>
+                                <button
+                                  class="btn btnWide"
+                                  type="button"
+                                  disabled={Boolean(action())}
+                                  onClick={() => void deactivate(it.id)}
+                                >
                                   <span style="display: inline-flex; gap: 10px; align-items: center">
-                                    {isAction("deactivate", it.id) ? <span class="spinner" /> : null}
-                                    <span>{isAction("deactivate", it.id) ? "Taking Down…" : "Take Down"}</span>
+                                    {isAction("deactivate", it.id) ? (
+                                      <span class="spinner" />
+                                    ) : null}
+                                    <span>
+                                      {isAction("deactivate", it.id) ? "Taking Down…" : "Take Down"}
+                                    </span>
                                   </span>
                                 </button>
                               </Show>

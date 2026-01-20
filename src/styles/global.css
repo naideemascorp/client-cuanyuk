@@ -13,8 +13,8 @@
   --radius-lg: 18px;
   --radius-md: 12px;
   --radius-sm: 10px;
-  --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
-    "Segoe UI Emoji";
+  --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+    "Apple Color Emoji", "Segoe UI Emoji";
 }
 
 * {
@@ -91,7 +91,12 @@ input {
   content: "";
   position: absolute;
   inset: -2px;
-  background: linear-gradient(135deg, rgba(124, 255, 214, 0.36), rgba(157, 124, 255, 0.26), rgba(255, 124, 207, 0.16));
+  background: linear-gradient(
+    135deg,
+    rgba(124, 255, 214, 0.36),
+    rgba(157, 124, 255, 0.26),
+    rgba(255, 124, 207, 0.16)
+  );
   opacity: 0.28;
   filter: blur(18px);
   z-index: 0;
@@ -175,7 +180,8 @@ input {
   width: 100%;
   display: inline-flex;
   justify-content: center;
-  min-height: 44px;
+  min-height: 48px;
+  white-space: nowrap;
 }
 
 .btnPrimary {
@@ -221,7 +227,12 @@ input {
   content: "";
   position: absolute;
   inset: -2px;
-  background: linear-gradient(135deg, rgba(255, 124, 207, 0.22), rgba(157, 124, 255, 0.2), rgba(124, 255, 214, 0.18));
+  background: linear-gradient(
+    135deg,
+    rgba(255, 124, 207, 0.22),
+    rgba(157, 124, 255, 0.2),
+    rgba(124, 255, 214, 0.18)
+  );
   opacity: 0.35;
   filter: blur(18px);
   pointer-events: none;
@@ -515,6 +526,71 @@ input {
   border-color: rgba(157, 124, 255, 0.5);
 }
 
+.iconBtn {
+  width: 42px;
+  height: 42px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(250, 250, 255, 0.86);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.iconBtn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(124, 255, 214, 0.34);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.iconBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.inputIconWrap {
+  position: relative;
+}
+
+.inputIconWrap input {
+  padding-right: 44px;
+}
+
+.inputIcon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  place-items: center;
+  color: rgba(250, 250, 255, 0.72);
+  pointer-events: none;
+}
+
+.fieldReq {
+  color: rgba(255, 124, 207, 0.92);
+  margin-left: 6px;
+  font-weight: 900;
+}
+
+.fieldError {
+  color: rgba(255, 190, 220, 0.92);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.inputError {
+  border-color: rgba(255, 124, 207, 0.34) !important;
+  background: linear-gradient(135deg, rgba(255, 124, 207, 0.08), rgba(0, 0, 0, 0.12)) !important;
+}
+
 .select {
   width: 100%;
   padding: 12px 14px;
@@ -593,12 +669,7 @@ input {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.14),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
   transform: translateX(-70%);
   filter: blur(1px);
   animation: shimmer 1.05s ease-in-out infinite;
@@ -662,6 +733,38 @@ input {
   align-items: center;
 }
 
+.countRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.countPill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(135deg, rgba(124, 255, 214, 0.1), rgba(157, 124, 255, 0.08));
+}
+
+.countPillLabel {
+  color: rgba(250, 250, 255, 0.68);
+  letter-spacing: 0.01em;
+}
+
+.countPillValue {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: rgba(250, 250, 255, 0.92);
+}
+
+.countDot {
+  color: rgba(250, 250, 255, 0.42);
+}
+
 .toastWrap {
   position: fixed;
   right: 18px;
@@ -677,12 +780,29 @@ input {
   gap: 12px;
   padding: 12px 12px 12px 14px;
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: linear-gradient(180deg, rgba(22, 30, 52, 0.86), rgba(12, 14, 22, 0.72));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: radial-gradient(circle at 12% 25%, rgba(255, 124, 207, 0.18), transparent 58%),
+    radial-gradient(circle at 88% 35%, rgba(124, 255, 214, 0.16), transparent 58%),
+    linear-gradient(180deg, rgba(22, 30, 52, 0.9), rgba(12, 14, 22, 0.76));
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(10px);
   position: relative;
   overflow: hidden;
+}
+
+.toast::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(
+    135deg,
+    rgba(124, 255, 214, 0.32),
+    rgba(157, 124, 255, 0.24),
+    rgba(255, 124, 207, 0.24)
+  );
+  opacity: 0.3;
+  filter: blur(18px);
+  pointer-events: none;
 }
 
 .toastLeft {
@@ -690,6 +810,18 @@ input {
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+.toastIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(250, 250, 255, 0.88);
+  flex: 0 0 auto;
 }
 
 .toastMsg {
@@ -711,7 +843,8 @@ input {
   color: rgba(250, 250, 255, 0.76);
   cursor: pointer;
   line-height: 1;
-  font-size: 18px;
+  display: grid;
+  place-items: center;
 }
 
 .toastClose:hover {
@@ -724,6 +857,21 @@ input {
 
 .toast--error {
   border-color: rgba(255, 124, 207, 0.26);
+}
+
+.toast--success .toastIcon {
+  border-color: rgba(124, 255, 214, 0.28);
+  background: linear-gradient(135deg, rgba(124, 255, 214, 0.16), rgba(157, 124, 255, 0.08));
+}
+
+.toast--error .toastIcon {
+  border-color: rgba(255, 124, 207, 0.28);
+  background: linear-gradient(135deg, rgba(255, 124, 207, 0.16), rgba(157, 124, 255, 0.06));
+}
+
+.toast--progress .toastIcon {
+  border-color: rgba(157, 124, 255, 0.28);
+  background: linear-gradient(135deg, rgba(157, 124, 255, 0.16), rgba(124, 255, 214, 0.08));
 }
 
 .toastBar {
@@ -741,13 +889,52 @@ input {
   height: 100%;
   width: 100%;
   transform-origin: left;
-  background: linear-gradient(90deg, rgba(124, 255, 214, 0.7), rgba(157, 124, 255, 0.7), rgba(255, 124, 207, 0.7));
+  background: linear-gradient(
+    90deg,
+    rgba(124, 255, 214, 0.7),
+    rgba(157, 124, 255, 0.7),
+    rgba(255, 124, 207, 0.7)
+  );
   animation: toastFill 5s linear forwards;
+}
+
+.toastBarFillStatic {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(124, 255, 214, 0.78),
+    rgba(157, 124, 255, 0.78),
+    rgba(255, 124, 207, 0.78)
+  );
+  transition: width 0.12s ease;
+}
+
+.toastBarIndeterminate {
+  height: 100%;
+  width: 36%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(124, 255, 214, 0),
+    rgba(124, 255, 214, 0.82),
+    rgba(255, 124, 207, 0)
+  );
+  animation: toastIndeterminate 1.1s ease-in-out infinite;
 }
 
 @keyframes toastFill {
   to {
     transform: scaleX(0);
+  }
+}
+
+@keyframes toastIndeterminate {
+  0% {
+    transform: translateX(-40%);
+  }
+  100% {
+    transform: translateX(320%);
   }
 }
 
@@ -762,6 +949,135 @@ input {
   background: rgba(255, 255, 255, 0.04);
   min-width: 0;
   flex-wrap: wrap;
+}
+
+.dropzoneWrap {
+  display: grid;
+  gap: 8px;
+}
+
+.dropzone {
+  width: 100%;
+  text-align: left;
+  padding: 0;
+  border-radius: 18px;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  background: radial-gradient(circle at 20% 10%, rgba(255, 124, 207, 0.14), transparent 55%),
+    radial-gradient(circle at 85% 25%, rgba(124, 255, 214, 0.12), transparent 55%),
+    linear-gradient(180deg, rgba(22, 30, 52, 0.62), rgba(12, 14, 22, 0.42));
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+}
+
+.dropzone:hover {
+  transform: translateY(-1px);
+  border-color: rgba(124, 255, 214, 0.32);
+}
+
+.dropzoneActive {
+  border-color: rgba(124, 255, 214, 0.48);
+  background: radial-gradient(circle at 20% 10%, rgba(255, 124, 207, 0.16), transparent 55%),
+    radial-gradient(circle at 85% 25%, rgba(124, 255, 214, 0.14), transparent 55%),
+    linear-gradient(180deg, rgba(22, 30, 52, 0.74), rgba(12, 14, 22, 0.52));
+}
+
+.dropzoneDisabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.dropzoneInner {
+  padding: 14px 14px 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.dropzoneTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dropzoneLabel {
+  color: rgba(250, 250, 255, 0.8);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.dropzoneClear {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(250, 250, 255, 0.78);
+}
+
+.dropzoneClear:hover {
+  border-color: rgba(255, 124, 207, 0.3);
+}
+
+.dropzoneBody {
+  min-height: 62px;
+  display: grid;
+  place-items: center start;
+}
+
+.dropzoneHint {
+  display: grid;
+  gap: 4px;
+}
+
+.dropzoneTitle {
+  font-weight: 780;
+  letter-spacing: -0.02em;
+  color: rgba(250, 250, 255, 0.92);
+}
+
+.dropzoneSub {
+  color: rgba(250, 250, 255, 0.64);
+  font-size: 13px;
+}
+
+.dropzoneFile {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+}
+
+.dropzoneFileName {
+  font-weight: 720;
+  letter-spacing: -0.01em;
+  color: rgba(250, 250, 255, 0.9);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropzoneFileMeta {
+  color: rgba(250, 250, 255, 0.58);
+  font-size: 12px;
+}
+
+.dropzoneProgress {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.dropzoneProgressBar {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(124, 255, 214, 0.78),
+    rgba(157, 124, 255, 0.78),
+    rgba(255, 124, 207, 0.78)
+  );
+  transition: width 0.12s ease;
 }
 
 .filePickName {
@@ -781,7 +1097,12 @@ input {
   padding: 10px 12px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  background: linear-gradient(135deg, rgba(255, 124, 207, 0.14), rgba(157, 124, 255, 0.14), rgba(124, 255, 214, 0.12));
+  background: linear-gradient(
+    135deg,
+    rgba(255, 124, 207, 0.14),
+    rgba(157, 124, 255, 0.14),
+    rgba(124, 255, 214, 0.12)
+  );
   color: rgba(250, 250, 255, 0.9);
   cursor: pointer;
   flex: 0 0 auto;
@@ -837,7 +1158,12 @@ input {
   width: min(1100px, 100%);
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.16);
-  background: linear-gradient(135deg, rgba(255, 124, 207, 0.12), rgba(157, 124, 255, 0.12), rgba(124, 255, 214, 0.1));
+  background: linear-gradient(
+    135deg,
+    rgba(255, 124, 207, 0.12),
+    rgba(157, 124, 255, 0.12),
+    rgba(124, 255, 214, 0.1)
+  );
   color: rgba(250, 250, 255, 0.82);
   padding: 12px 14px;
   font-size: 13px;

@@ -1,8 +1,15 @@
+import { useToast } from "@/state/toast";
+import { api } from "@/utils/api";
 import { useLocation, useNavigate } from "@solidjs/router";
-import { createContext, createEffect, createSignal, onMount, useContext, type JSX } from "solid-js";
-import { api } from "../utils/api";
+import { type JSX, createContext, createEffect, createSignal, onMount, useContext } from "solid-js";
 
-type User = { id: string; username: string; email: string; organizationId: string; role: "USER" | "SUPER" };
+type User = {
+  id: string;
+  username: string;
+  email: string;
+  organizationId: string;
+  role: "USER" | "SUPER";
+};
 
 type AuthState = {
   me: () => User | null;
@@ -17,6 +24,7 @@ const AuthContext = createContext<AuthState>();
 export const AuthProvider = (props: { children: JSX.Element }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const toast = useToast();
 
   const [me, setMe] = createSignal<User | null>(null);
   const [shareUrl, setShareUrl] = createSignal<string | null>(null);
@@ -36,12 +44,7 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
           try {
             localStorage.removeItem("auth_token");
           } catch {}
-          try {
-            sessionStorage.setItem(
-              "flash_toast",
-              JSON.stringify({ kind: "error", message: "Session expired. Please sign in again." })
-            );
-          } catch {}
+          toast.showToast("error", "Session expired. Please sign in again.");
         }
         return;
       }
@@ -54,12 +57,7 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
         try {
           localStorage.removeItem("auth_token");
         } catch {}
-        try {
-          sessionStorage.setItem(
-            "flash_toast",
-            JSON.stringify({ kind: "error", message: "Session restore failed. Please sign in again." })
-          );
-        } catch {}
+        toast.showToast("error", "Session restore failed. Please sign in again.");
       }
     }
   };
@@ -89,12 +87,7 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
                   try {
                     localStorage.removeItem("auth_token");
                   } catch {}
-                  try {
-                    sessionStorage.setItem(
-                      "flash_toast",
-                      JSON.stringify({ kind: "error", message: "Session restore timed out. Please sign in again." })
-                    );
-                  } catch {}
+                  toast.showToast("error", "Session restore timed out. Please sign in again.");
                 }
                 if (!isPublic) navigate("/sign-in", { replace: true });
               }, 25_000)
@@ -125,10 +118,13 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
 
   const signIn = async (identifier: string, password: string) => {
     setLoading(true);
-    const res = await api.post<{ ok: boolean; token?: string; user?: User; code?: string }>("/auth/signin", {
-      identifier,
-      password
-    });
+    const res = await api.post<{ ok: boolean; token?: string; user?: User; code?: string }>(
+      "/auth/signin",
+      {
+        identifier,
+        password,
+      },
+    );
     if (!res.ok) {
       setLoading(false);
       throw new Error(res.code ?? "SIGNIN_FAILED");
@@ -140,6 +136,7 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
     }
     await fetchMe();
     setLoading(false);
+    toast.showToast("success", "Signed in.");
     navigate("/", { replace: true });
   };
 
@@ -152,9 +149,7 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
     try {
       localStorage.removeItem("auth_token");
     } catch {}
-    try {
-      sessionStorage.setItem("flash_toast", JSON.stringify({ kind: "success", message: "Signed out." }));
-    } catch {}
+    toast.showToast("success", "Signed out.");
     navigate("/sign-in", { replace: true });
   };
 

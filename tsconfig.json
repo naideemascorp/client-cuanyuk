@@ -12,8 +12,11 @@
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
     "types": ["bun-types"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
     "strict": true
   },
   "include": ["src"]
 }
-

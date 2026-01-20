@@ -1,10 +1,15 @@
+import { Toast, type ToastState } from "@/components/toast";
+import { useAuth } from "@/state/auth";
+import { api } from "@/utils/api";
 import { useNavigate } from "@solidjs/router";
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
-import { Toast, type ToastState } from "../components/toast";
-import { useAuth } from "../state/auth";
-import { api } from "../utils/api";
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 
-type IpEntry = { id: string; ip: string; note: string | null; status: "ACTIVE" | "INACTIVE" | "PENDING" | "DELETED" };
+type IpEntry = {
+  id: string;
+  deviceId: string;
+  note: string | null;
+  status: "ACTIVE" | "INACTIVE" | "PENDING" | "DELETED";
+};
 type UserEntry = {
   id: string;
   username: string;
@@ -23,7 +28,7 @@ export default function Admin() {
 
   const [tab, setTab] = createSignal<Tab>("ips");
   const [toast, setToast] = createSignal<ToastState>(null);
-  let toastTimer: number | null = null;
+  let toastTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
 
   const [ipEntries, setIpEntries] = createSignal<IpEntry[]>([]);
   const [ip, setIp] = createSignal("");
@@ -40,7 +45,9 @@ export default function Admin() {
   const [userLoading, setUserLoading] = createSignal(false);
   const [userSaving, setUserSaving] = createSignal(false);
   const [userQuery, setUserQuery] = createSignal("");
-  const [userStatusFilter, setUserStatusFilter] = createSignal<"ALL" | "ACTIVE" | "INACTIVE">("ALL");
+  const [userStatusFilter, setUserStatusFilter] = createSignal<"ALL" | "ACTIVE" | "INACTIVE">(
+    "ALL",
+  );
   const [userRoleFilter, setUserRoleFilter] = createSignal<"ALL" | "USER" | "SUPER">("ALL");
   const [userPage, setUserPage] = createSignal(1);
   const [editingUserId, setEditingUserId] = createSignal<string | null>(null);
@@ -50,16 +57,16 @@ export default function Admin() {
   const [editStatus, setEditStatus] = createSignal<"ACTIVE" | "INACTIVE">("ACTIVE");
 
   const closeToast = () => {
-    if (toastTimer) window.clearTimeout(toastTimer);
+    if (toastTimer) globalThis.clearTimeout(toastTimer);
     toastTimer = null;
     setToast(null);
   };
 
   const showToast = (kind: NonNullable<ToastState>["kind"], message: string) => {
-    if (toastTimer) window.clearTimeout(toastTimer);
+    if (toastTimer) globalThis.clearTimeout(toastTimer);
     toastTimer = null;
     setToast({ id: Date.now(), kind, message });
-    toastTimer = window.setTimeout(() => setToast(null), 5000);
+    toastTimer = globalThis.setTimeout(() => setToast(null), 5000);
   };
 
   const isSuper = createMemo(() => auth.me()?.role === "SUPER");
@@ -67,7 +74,7 @@ export default function Admin() {
   const refreshIps = async () => {
     setIpLoading(true);
     try {
-      const res = await api.get<{ entries: IpEntry[] }>("/admin/ips");
+      const res = await api.get<{ entries: IpEntry[] }>("/admin/devices");
       setIpEntries(res.entries ?? []);
     } catch (e) {
       showToast("error", e instanceof Error ? e.message : "LOAD_FAILED");
@@ -105,10 +112,10 @@ export default function Admin() {
       return;
     }
     void refreshAll();
-    const id = window.setInterval(() => {
+    const id = globalThis.setInterval(() => {
       void refreshAll({ skipIfBusy: true });
     }, 10000);
-    return () => window.clearInterval(id);
+    return () => globalThis.clearInterval(id);
   });
 
   const saveIp = async () => {
@@ -117,7 +124,11 @@ export default function Admin() {
     setIpSaving(true);
     showToast("progress", "Submitting…");
     try {
-      await api.post("/admin/ips", { ip: ipVal, status: ipStatus(), note: ipNote().trim() || undefined });
+      await api.post("/admin/devices", {
+        deviceId: ipVal,
+        status: ipStatus(),
+        note: ipNote().trim() || undefined,
+      });
       showToast("success", "Submitted.");
       setIp("");
       setIpNote("");
@@ -159,7 +170,7 @@ export default function Admin() {
         username,
         email,
         role: editRole(),
-        status: editStatus()
+        status: editStatus(),
       });
       showToast("success", "Submitted.");
       setEditingUserId(null);
@@ -179,7 +190,7 @@ export default function Admin() {
         username: u.username,
         email: u.email,
         role: u.role,
-        status: nextStatus
+        status: nextStatus,
       });
       showToast("success", "Submitted.");
       await refreshUsers();
@@ -199,11 +210,12 @@ export default function Admin() {
     const q = ipQuery().trim().toLowerCase();
     const f = ipStatusFilter();
     return ipEntries().filter((e) => {
-      const statusOk = f === "ALL" ? true : f === "WHITELIST" ? e.status === "ACTIVE" : e.status === "INACTIVE";
+      const statusOk =
+        f === "ALL" ? true : f === "WHITELIST" ? e.status === "ACTIVE" : e.status === "INACTIVE";
       if (!statusOk) return false;
       if (!q) return true;
       const noteText = (e.note ?? "").toLowerCase();
-      return e.ip.toLowerCase().includes(q) || noteText.includes(q);
+      return e.deviceId.toLowerCase().includes(q) || noteText.includes(q);
     });
   });
   const ipPageSize = 10;
@@ -224,7 +236,8 @@ export default function Admin() {
     const s = userStatusFilter();
     const r = userRoleFilter();
     return users().filter((u) => {
-      const statusOk = s === "ALL" ? true : s === "ACTIVE" ? u.status === "ACTIVE" : u.status === "INACTIVE";
+      const statusOk =
+        s === "ALL" ? true : s === "ACTIVE" ? u.status === "ACTIVE" : u.status === "INACTIVE";
       if (!statusOk) return false;
       const roleOk = r === "ALL" ? true : u.role === r;
       if (!roleOk) return false;
@@ -233,7 +246,9 @@ export default function Admin() {
     });
   });
   const userPageSize = 10;
-  const userTotalPages = createMemo(() => Math.max(1, Math.ceil(userFiltered().length / userPageSize)));
+  const userTotalPages = createMemo(() =>
+    Math.max(1, Math.ceil(userFiltered().length / userPageSize)),
+  );
   createEffect(() => {
     const p = userPage();
     const tp = userTotalPages();
@@ -251,19 +266,43 @@ export default function Admin() {
         <div class="panelInner">
           <div class="title">
             <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap">
-              <button class="btn" type="button" onClick={() => navigate("/")} disabled={ipSaving() || userSaving()}>
-                Back
+              <button
+                class="iconBtn"
+                type="button"
+                onClick={() => navigate("/")}
+                disabled={ipSaving() || userSaving()}
+                aria-label="Back"
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <title>Back</title>
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
               </button>
-              <h1 style="margin: 0">Admin</h1>
+              <h1 style="margin: 0; letter-spacing: -0.02em">Admin</h1>
             </div>
           </div>
 
           <Show when={isSuper()}>
             <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px">
-              <button class={`btn ${tab() === "ips" ? "btnPrimary" : ""}`} type="button" onClick={() => setTab("ips")}>
-                IP Lists
+              <button
+                class={`btn ${tab() === "ips" ? "btnPrimary" : ""}`}
+                type="button"
+                onClick={() => setTab("ips")}
+              >
+                Device Lists
               </button>
-              <button class={`btn ${tab() === "users" ? "btnPrimary" : ""}`} type="button" onClick={() => setTab("users")}>
+              <button
+                class={`btn ${tab() === "users" ? "btnPrimary" : ""}`}
+                type="button"
+                onClick={() => setTab("users")}
+              >
                 User Lists
               </button>
             </div>
@@ -272,29 +311,56 @@ export default function Admin() {
               <div class="grid">
                 <div class="card" style="grid-column: span 5">
                   <div class="cardInner" style="display: grid; gap: 12px">
-                    <div style="font-weight: 650; letter-spacing: -0.01em">Add / Update IP</div>
+                    <div style="font-weight: 650; letter-spacing: -0.01em">Add / Update Device</div>
                     <div class="field">
-                      <label>IP Address</label>
-                      <input value={ip()} onInput={(e) => setIp(e.currentTarget.value)} placeholder="e.g. 203.0.113.10" />
+                      <label for="admin_ip_address">Device ID</label>
+                      <input
+                        id="admin_ip_address"
+                        value={ip()}
+                        onInput={(e) => setIp(e.currentTarget.value)}
+                        placeholder="e.g. 7f06b84f-10c9-0ace-952e-5cf24d5ad4aa"
+                      />
                     </div>
                     <div class="field">
-                      <label>Status</label>
-                      <select class="select" value={ipStatus()} onChange={(e) => setIpStatus(e.currentTarget.value as "ACTIVE" | "INACTIVE")}>
+                      <label for="admin_ip_status">Status</label>
+                      <select
+                        id="admin_ip_status"
+                        class="select"
+                        value={ipStatus()}
+                        onChange={(e) =>
+                          setIpStatus(e.currentTarget.value as "ACTIVE" | "INACTIVE")
+                        }
+                      >
                         <option value="ACTIVE">Whitelist</option>
                         <option value="INACTIVE">Blacklist</option>
                       </select>
                     </div>
                     <div class="field">
-                      <label>Remarks</label>
-                      <input value={ipNote()} onInput={(e) => setIpNote(e.currentTarget.value)} placeholder="e.g. Office Wi‑Fi" />
+                      <label for="admin_ip_remarks">Remarks</label>
+                      <input
+                        id="admin_ip_remarks"
+                        value={ipNote()}
+                        onInput={(e) => setIpNote(e.currentTarget.value)}
+                        placeholder="e.g. Office Wi‑Fi"
+                      />
                     </div>
                     <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end">
                       <Show when={ipEditing()}>
-                        <button class="btn" type="button" disabled={ipSaving()} onClick={cancelIpEdit}>
+                        <button
+                          class="btn"
+                          type="button"
+                          disabled={ipSaving()}
+                          onClick={cancelIpEdit}
+                        >
                           Cancel
                         </button>
                       </Show>
-                      <button class="btn btnPrimary" disabled={ipSaving() || ip().trim().length < 3} onClick={() => void saveIp()}>
+                      <button
+                        class="btn btnPrimary"
+                        type="button"
+                        disabled={ipSaving() || ip().trim().length < 3}
+                        onClick={() => void saveIp()}
+                      >
                         <span style="display: inline-flex; gap: 10px; align-items: center">
                           {ipSaving() ? <span class="spinner" /> : null}
                           <span>{ipSaving() ? "Submitting…" : "Submit"}</span>
@@ -307,12 +373,25 @@ export default function Admin() {
                 <div class="card" style="grid-column: span 7">
                   <div class="cardInner" style="display: grid; gap: 12px">
                     <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
-                      <div style="font-weight: 650; letter-spacing: -0.01em">IP Lists</div>
-                      <button class="btn" disabled={ipLoading()} onClick={() => void refreshIps()}>
+                      <div style="font-weight: 650; letter-spacing: -0.01em">Device Lists</div>
+                      <button
+                        class="btn"
+                        type="button"
+                        disabled={ipLoading()}
+                        onClick={() => void refreshIps()}
+                      >
                         <span style="display: inline-flex; gap: 10px; align-items: center">
                           {ipLoading() ? <span class="spinner" /> : null}
                           {!ipLoading() ? (
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                            >
+                              <title>Refresh</title>
                               <path d="M21 12a9 9 0 1 1-2.64-6.36" />
                               <path d="M21 3v6h-6" />
                             </svg>
@@ -324,15 +403,41 @@ export default function Admin() {
 
                     <div class="filterRow filterRow2">
                       <div class="field" style="margin: 0">
-                        <label>Search</label>
-                        <input value={ipQuery()} onInput={(e) => setIpQuery(e.currentTarget.value)} placeholder="Search IP or remarks" />
+                        <label for="admin_ip_search">Search</label>
+                        <div class="inputIconWrap">
+                          <input
+                            id="admin_ip_search"
+                            value={ipQuery()}
+                            onInput={(e) => setIpQuery(e.currentTarget.value)}
+                            placeholder="Search device ID or remarks"
+                          />
+                          <span class="inputIcon" aria-hidden="true">
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                            >
+                              <title>Search</title>
+                              <circle cx="11" cy="11" r="7" />
+                              <path d="M21 21l-4.3-4.3" />
+                            </svg>
+                          </span>
+                        </div>
                       </div>
                       <div class="field" style="margin: 0">
-                        <label>Status</label>
+                        <label for="admin_ip_status_filter">Status</label>
                         <select
+                          id="admin_ip_status_filter"
                           class="select"
                           value={ipStatusFilter()}
-                          onChange={(e) => setIpStatusFilter(e.currentTarget.value as "ALL" | "WHITELIST" | "BACKLIST")}
+                          onChange={(e) =>
+                            setIpStatusFilter(
+                              e.currentTarget.value as "ALL" | "WHITELIST" | "BACKLIST",
+                            )
+                          }
                         >
                           <option value="ALL">All</option>
                           <option value="WHITELIST">Whitelist</option>
@@ -351,13 +456,28 @@ export default function Admin() {
                                 <div class="card" style="padding: 0">
                                   <div class="cardInner" style="display: grid; gap: 10px">
                                     <div style="display: flex; gap: 10px; align-items: baseline; justify-content: space-between">
-                                      <div class="skeleton" style="height: 14px; width: 46%; border-radius: 10px" />
-                                      <div class="skeleton" style="height: 22px; width: 92px; border-radius: 999px" />
+                                      <div
+                                        class="skeleton"
+                                        style="height: 14px; width: 46%; border-radius: 10px"
+                                      />
+                                      <div
+                                        class="skeleton"
+                                        style="height: 22px; width: 92px; border-radius: 999px"
+                                      />
                                     </div>
-                                    <div class="skeleton" style="height: 12px; width: 62%; border-radius: 10px" />
+                                    <div
+                                      class="skeleton"
+                                      style="height: 12px; width: 62%; border-radius: 10px"
+                                    />
                                     <div style="display: flex; gap: 10px; flex-wrap: wrap">
-                                      <div class="skeleton" style="height: 38px; width: 92px; border-radius: 14px" />
-                                      <div class="skeleton" style="height: 38px; width: 110px; border-radius: 14px" />
+                                      <div
+                                        class="skeleton"
+                                        style="height: 38px; width: 92px; border-radius: 14px"
+                                      />
+                                      <div
+                                        class="skeleton"
+                                        style="height: 38px; width: 110px; border-radius: 14px"
+                                      />
                                     </div>
                                   </div>
                                 </div>
@@ -375,18 +495,25 @@ export default function Admin() {
                             {(e) => (
                               <div style="border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 12px; display: grid; gap: 8px">
                                 <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
-                                  <div style="font-weight: 700; letter-spacing: -0.01em">{e.ip}</div>
-                                  <span class={`statusPill ${e.status === "ACTIVE" ? "statusActive" : "statusInactive"}`}>
+                                  <div style="font-weight: 700; letter-spacing: -0.01em">
+                                    {e.deviceId}
+                                  </div>
+                                  <span
+                                    class={`statusPill ${e.status === "ACTIVE" ? "statusActive" : "statusInactive"}`}
+                                  >
                                     {e.status === "ACTIVE" ? "Whitelist" : "Blacklist"}
                                   </span>
                                 </div>
-                                <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.4">{e.note ?? "—"}</div>
+                                <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.4">
+                                  {e.note ?? "—"}
+                                </div>
                                 <div style="display: flex; gap: 10px; flex-wrap: wrap">
                                   <button
                                     class="btn"
+                                    type="button"
                                     disabled={ipSaving()}
                                     onClick={() => {
-                                      setIp(e.ip);
+                                      setIp(e.deviceId);
                                       setIpNote(e.note ?? "");
                                       setIpStatus(e.status === "ACTIVE" ? "ACTIVE" : "INACTIVE");
                                       setIpEditing(true);
@@ -397,9 +524,16 @@ export default function Admin() {
                                   <Show when={e.status !== "ACTIVE"}>
                                     <button
                                       class="btn"
+                                      type="button"
                                       disabled={ipSaving()}
                                       onClick={() =>
-                                        void api.post("/admin/ips", { ip: e.ip, status: "ACTIVE", note: e.note ?? undefined }).then(refreshIps)
+                                        void api
+                                          .post("/admin/devices", {
+                                            deviceId: e.deviceId,
+                                            status: "ACTIVE",
+                                            note: e.note ?? undefined,
+                                          })
+                                          .then(refreshIps)
                                       }
                                     >
                                       Whitelist
@@ -408,9 +542,16 @@ export default function Admin() {
                                   <Show when={e.status === "ACTIVE"}>
                                     <button
                                       class="btn"
+                                      type="button"
                                       disabled={ipSaving()}
                                       onClick={() =>
-                                        void api.post("/admin/ips", { ip: e.ip, status: "INACTIVE", note: e.note ?? undefined }).then(refreshIps)
+                                        void api
+                                          .post("/admin/devices", {
+                                            deviceId: e.deviceId,
+                                            status: "INACTIVE",
+                                            note: e.note ?? undefined,
+                                          })
+                                          .then(refreshIps)
                                       }
                                     >
                                       Blacklist
@@ -425,14 +566,25 @@ export default function Admin() {
 
                       <div style="display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap">
                         <div style="color: rgba(250,250,255,0.62); font-size: 13px">
-                          Page {ipPage()} of {ipTotalPages()} • Showing {Math.min(ipPageSize, ipFiltered().length - (ipPage() - 1) * ipPageSize)} of{" "}
-                          {ipFiltered().length}
+                          Page {ipPage()} of {ipTotalPages()} • Showing{" "}
+                          {Math.min(ipPageSize, ipFiltered().length - (ipPage() - 1) * ipPageSize)}{" "}
+                          of {ipFiltered().length}
                         </div>
                         <div style="display: flex; gap: 10px; align-items: center">
-                          <button class="btn" disabled={ipPage() <= 1} onClick={() => setIpPage((p) => Math.max(1, p - 1))}>
+                          <button
+                            class="btn"
+                            type="button"
+                            disabled={ipPage() <= 1}
+                            onClick={() => setIpPage((p) => Math.max(1, p - 1))}
+                          >
                             Prev
                           </button>
-                          <button class="btn" disabled={ipPage() >= ipTotalPages()} onClick={() => setIpPage((p) => Math.min(ipTotalPages(), p + 1))}>
+                          <button
+                            class="btn"
+                            type="button"
+                            disabled={ipPage() >= ipTotalPages()}
+                            onClick={() => setIpPage((p) => Math.min(ipTotalPages(), p + 1))}
+                          >
                             Next
                           </button>
                         </div>
@@ -453,43 +605,71 @@ export default function Admin() {
                         <div class="emptyCenter">
                           <div class="emptyLogo">CY</div>
                           <div class="emptyTitle">No user selected</div>
-                          <div class="emptyText">Tap a user on the right to update their profile or status.</div>
+                          <div class="emptyText">
+                            Tap a user on the right to update their profile or status.
+                          </div>
                         </div>
                       </div>
                     </Show>
                     <Show when={editingUserId()}>
                       <div style="display: grid; gap: 12px">
                         <div class="field">
-                          <label>Username</label>
-                          <input value={editUsername()} onInput={(e) => setEditUsername(e.currentTarget.value)} />
+                          <label for="admin_user_username">Username</label>
+                          <input
+                            id="admin_user_username"
+                            value={editUsername()}
+                            onInput={(e) => setEditUsername(e.currentTarget.value)}
+                          />
                         </div>
                         <div class="field">
-                          <label>Email</label>
-                          <input value={editEmail()} onInput={(e) => setEditEmail(e.currentTarget.value)} />
+                          <label for="admin_user_email">Email</label>
+                          <input
+                            id="admin_user_email"
+                            value={editEmail()}
+                            onInput={(e) => setEditEmail(e.currentTarget.value)}
+                          />
                         </div>
                         <div class="field">
-                          <label>Role</label>
-                          <select class="select" value={editRole()} onChange={(e) => setEditRole(e.currentTarget.value as "USER" | "SUPER")}>
+                          <label for="admin_user_role">Role</label>
+                          <select
+                            id="admin_user_role"
+                            class="select"
+                            value={editRole()}
+                            onChange={(e) => setEditRole(e.currentTarget.value as "USER" | "SUPER")}
+                          >
                             <option value="USER">User</option>
                             <option value="SUPER">Super</option>
                           </select>
                         </div>
                         <div class="field">
-                          <label>Status</label>
+                          <label for="admin_user_status">Status</label>
                           <select
+                            id="admin_user_status"
                             class="select"
                             value={editStatus()}
-                            onChange={(e) => setEditStatus(e.currentTarget.value as "ACTIVE" | "INACTIVE")}
+                            onChange={(e) =>
+                              setEditStatus(e.currentTarget.value as "ACTIVE" | "INACTIVE")
+                            }
                           >
                             <option value="ACTIVE">Active</option>
                             <option value="INACTIVE">Inactive</option>
                           </select>
                         </div>
                         <div style="display: flex; gap: 10px; flex-wrap: wrap">
-                          <button class="btn" type="button" disabled={userSaving()} onClick={() => setEditingUserId(null)}>
+                          <button
+                            class="btn"
+                            type="button"
+                            disabled={userSaving()}
+                            onClick={() => setEditingUserId(null)}
+                          >
                             Cancel
                           </button>
-                          <button class="btn btnPrimary" disabled={userSaving() || editUsername().trim().length < 2} onClick={() => void saveUser()}>
+                          <button
+                            class="btn btnPrimary"
+                            type="button"
+                            disabled={userSaving() || editUsername().trim().length < 2}
+                            onClick={() => void saveUser()}
+                          >
                             <span style="display: inline-flex; gap: 10px; align-items: center">
                               {userSaving() ? <span class="spinner" /> : null}
                               <span>{userSaving() ? "Submitting…" : "Submit"}</span>
@@ -505,11 +685,24 @@ export default function Admin() {
                   <div class="cardInner" style="display: grid; gap: 12px">
                     <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
                       <div style="font-weight: 650; letter-spacing: -0.01em">User Lists</div>
-                      <button class="btn" disabled={userLoading()} onClick={() => void refreshUsers()}>
+                      <button
+                        class="btn"
+                        type="button"
+                        disabled={userLoading()}
+                        onClick={() => void refreshUsers()}
+                      >
                         <span style="display: inline-flex; gap: 10px; align-items: center">
                           {userLoading() ? <span class="spinner" /> : null}
                           {!userLoading() ? (
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                            >
+                              <title>Refresh</title>
                               <path d="M21 12a9 9 0 1 1-2.64-6.36" />
                               <path d="M21 3v6h-6" />
                             </svg>
@@ -521,15 +714,41 @@ export default function Admin() {
 
                     <div class="filterRow filterRow3">
                       <div class="field" style="margin: 0">
-                        <label>Search</label>
-                        <input value={userQuery()} onInput={(e) => setUserQuery(e.currentTarget.value)} placeholder="Search email or username" />
+                        <label for="admin_user_search">Search</label>
+                        <div class="inputIconWrap">
+                          <input
+                            id="admin_user_search"
+                            value={userQuery()}
+                            onInput={(e) => setUserQuery(e.currentTarget.value)}
+                            placeholder="Search email or username"
+                          />
+                          <span class="inputIcon" aria-hidden="true">
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                            >
+                              <title>Search</title>
+                              <circle cx="11" cy="11" r="7" />
+                              <path d="M21 21l-4.3-4.3" />
+                            </svg>
+                          </span>
+                        </div>
                       </div>
                       <div class="field" style="margin: 0">
-                        <label>Status</label>
+                        <label for="admin_user_status_filter">Status</label>
                         <select
+                          id="admin_user_status_filter"
                           class="select"
                           value={userStatusFilter()}
-                          onChange={(e) => setUserStatusFilter(e.currentTarget.value as "ALL" | "ACTIVE" | "INACTIVE")}
+                          onChange={(e) =>
+                            setUserStatusFilter(
+                              e.currentTarget.value as "ALL" | "ACTIVE" | "INACTIVE",
+                            )
+                          }
                         >
                           <option value="ALL">All</option>
                           <option value="ACTIVE">Active</option>
@@ -537,11 +756,14 @@ export default function Admin() {
                         </select>
                       </div>
                       <div class="field" style="margin: 0">
-                        <label>Role</label>
+                        <label for="admin_user_role_filter">Role</label>
                         <select
+                          id="admin_user_role_filter"
                           class="select"
                           value={userRoleFilter()}
-                          onChange={(e) => setUserRoleFilter(e.currentTarget.value as "ALL" | "USER" | "SUPER")}
+                          onChange={(e) =>
+                            setUserRoleFilter(e.currentTarget.value as "ALL" | "USER" | "SUPER")
+                          }
                         >
                           <option value="ALL">All</option>
                           <option value="USER">User</option>
@@ -560,16 +782,34 @@ export default function Admin() {
                                 <div class="card" style="padding: 0">
                                   <div class="cardInner" style="display: grid; gap: 10px">
                                     <div style="display: flex; gap: 10px; align-items: baseline; justify-content: space-between">
-                                      <div class="skeleton" style="height: 14px; width: 58%; border-radius: 10px" />
+                                      <div
+                                        class="skeleton"
+                                        style="height: 14px; width: 58%; border-radius: 10px"
+                                      />
                                       <div style="display: inline-flex; gap: 8px">
-                                        <div class="skeleton" style="height: 22px; width: 76px; border-radius: 999px" />
-                                        <div class="skeleton" style="height: 22px; width: 86px; border-radius: 999px" />
+                                        <div
+                                          class="skeleton"
+                                          style="height: 22px; width: 76px; border-radius: 999px"
+                                        />
+                                        <div
+                                          class="skeleton"
+                                          style="height: 22px; width: 86px; border-radius: 999px"
+                                        />
                                       </div>
                                     </div>
-                                    <div class="skeleton" style="height: 12px; width: 40%; border-radius: 10px" />
+                                    <div
+                                      class="skeleton"
+                                      style="height: 12px; width: 40%; border-radius: 10px"
+                                    />
                                     <div style="display: flex; gap: 10px; flex-wrap: wrap">
-                                      <div class="skeleton" style="height: 38px; width: 76px; border-radius: 14px" />
-                                      <div class="skeleton" style="height: 38px; width: 110px; border-radius: 14px" />
+                                      <div
+                                        class="skeleton"
+                                        style="height: 38px; width: 76px; border-radius: 14px"
+                                      />
+                                      <div
+                                        class="skeleton"
+                                        style="height: 38px; width: 110px; border-radius: 14px"
+                                      />
                                     </div>
                                   </div>
                                 </div>
@@ -587,9 +827,15 @@ export default function Admin() {
                             {(u) => (
                               <div style="border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 12px; display: grid; gap: 8px">
                                 <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
-                                  <div style="font-weight: 750; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis">{u.email}</div>
+                                  <div style="font-weight: 750; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis">
+                                    {u.email}
+                                  </div>
                                   <div style="display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap">
-                                    <span class={`statusPill ${u.role === "SUPER" ? "statusPending" : "statusInactive"}`}>{u.role}</span>
+                                    <span
+                                      class={`statusPill ${u.role === "SUPER" ? "statusPending" : "statusInactive"}`}
+                                    >
+                                      {u.role}
+                                    </span>
                                     <span
                                       class={`statusPill ${
                                         u.status === "ACTIVE"
@@ -609,13 +855,27 @@ export default function Admin() {
                                   {u.username}
                                 </div>
                                 <div style="display: flex; gap: 10px; flex-wrap: wrap">
-                                  <button class="btn" disabled={userSaving()} onClick={() => beginEditUser(u)}>
+                                  <button
+                                    class="btn"
+                                    type="button"
+                                    disabled={userSaving()}
+                                    onClick={() => beginEditUser(u)}
+                                  >
                                     Edit
                                   </button>
                                   <button
                                     class="btn"
-                                    disabled={userSaving() || (u.status !== "ACTIVE" && u.status !== "INACTIVE")}
-                                    onClick={() => void setUserStatus(u, u.status === "ACTIVE" ? "INACTIVE" : "ACTIVE")}
+                                    type="button"
+                                    disabled={
+                                      userSaving() ||
+                                      (u.status !== "ACTIVE" && u.status !== "INACTIVE")
+                                    }
+                                    onClick={() =>
+                                      void setUserStatus(
+                                        u,
+                                        u.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
+                                      )
+                                    }
                                   >
                                     {u.status === "ACTIVE" ? "Deactivate" : "Activate"}
                                   </button>
@@ -629,13 +889,27 @@ export default function Admin() {
                       <div style="display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap">
                         <div style="color: rgba(250,250,255,0.62); font-size: 13px">
                           Page {userPage()} of {userTotalPages()} • Showing{" "}
-                          {Math.min(userPageSize, userFiltered().length - (userPage() - 1) * userPageSize)} of {userFiltered().length}
+                          {Math.min(
+                            userPageSize,
+                            userFiltered().length - (userPage() - 1) * userPageSize,
+                          )}{" "}
+                          of {userFiltered().length}
                         </div>
                         <div style="display: flex; gap: 10px; align-items: center">
-                          <button class="btn" disabled={userPage() <= 1} onClick={() => setUserPage((p) => Math.max(1, p - 1))}>
+                          <button
+                            class="btn"
+                            type="button"
+                            disabled={userPage() <= 1}
+                            onClick={() => setUserPage((p) => Math.max(1, p - 1))}
+                          >
                             Prev
                           </button>
-                          <button class="btn" disabled={userPage() >= userTotalPages()} onClick={() => setUserPage((p) => Math.min(userTotalPages(), p + 1))}>
+                          <button
+                            class="btn"
+                            type="button"
+                            disabled={userPage() >= userTotalPages()}
+                            onClick={() => setUserPage((p) => Math.min(userTotalPages(), p + 1))}
+                          >
                             Next
                           </button>
                         </div>

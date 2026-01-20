@@ -1,6 +1,6 @@
+import { api } from "@/utils/api";
 import { A, useSearchParams } from "@solidjs/router";
 import { createEffect, createSignal } from "solid-js";
-import { api } from "../utils/api";
 
 export default function VerifyEmail() {
   const [params] = useSearchParams();
@@ -18,14 +18,18 @@ export default function VerifyEmail() {
     void (async () => {
       setStatus("working");
       try {
-        const res = await api.get<{ ok: boolean; code?: string; alreadyVerified?: boolean }>(`/auth/verify-email?token=${encodeURIComponent(token)}`);
+        const res = await api.get<{ ok: boolean; code?: string; alreadyVerified?: boolean }>(
+          `/auth/verify-email?token=${encodeURIComponent(token)}`,
+        );
         if (!res.ok) {
           setStatus("bad");
           setDetail(res.code ?? "VERIFY_FAILED");
           return;
         }
         setStatus("ok");
-        setDetail(res.alreadyVerified ? "Already verified. You can sign in." : "Verified. You can sign in.");
+        setDetail(
+          res.alreadyVerified ? "Already verified. You can sign in." : "Verified. You can sign in.",
+        );
       } catch (e) {
         setStatus("bad");
         setDetail(e instanceof Error ? e.message : "VERIFY_FAILED");
@@ -44,7 +48,9 @@ export default function VerifyEmail() {
 
           <div class="card">
             <div class="cardInner" style="display: grid; gap: 12px">
-              <div style="color: rgba(250,250,255,0.8)">{status() === "working" ? "Verifying…" : detail()}</div>
+              <div style="color: rgba(250,250,255,0.8)">
+                {status() === "working" ? "Verifying…" : detail()}
+              </div>
               <div class="mutedRow">
                 <A class="pillLink" href="/sign-in">
                   Go to Sign In

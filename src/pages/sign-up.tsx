@@ -1,6 +1,6 @@
+import { api } from "@/utils/api";
 import { A, useNavigate } from "@solidjs/router";
-import { createEffect, createSignal, onMount } from "solid-js";
-import { api } from "../utils/api";
+import { Show, createEffect, createMemo, createSignal, onMount } from "solid-js";
 
 export default function SignUp() {
   const navigate = useNavigate();
@@ -11,6 +11,24 @@ export default function SignUp() {
   const [status, setStatus] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
   const [checkingTooLong, setCheckingTooLong] = createSignal(false);
+  const [touchedUsername, setTouchedUsername] = createSignal(false);
+  const [touchedEmail, setTouchedEmail] = createSignal(false);
+  const [touchedPassword, setTouchedPassword] = createSignal(false);
+  const isUsernameValid = createMemo(() => username().trim().length >= 3);
+  const isEmailValid = createMemo(() => /^\S+@\S+\.\S+$/.test(email().trim()));
+  const isPasswordValid = createMemo(() => password().trim().length >= 8);
+  const usernameError = createMemo(() =>
+    touchedUsername() && !isUsernameValid() ? "Please fill in this field." : null,
+  );
+  const emailError = createMemo(() =>
+    touchedEmail() && !isEmailValid() ? "Please fill in this field." : null,
+  );
+  const passwordError = createMemo(() =>
+    touchedPassword() && !isPasswordValid() ? "Please fill in this field." : null,
+  );
+  const canSubmit = createMemo(
+    () => !busy() && isUsernameValid() && isEmailValid() && isPasswordValid(),
+  );
 
   onMount(() => {
     void (async () => {
@@ -36,13 +54,17 @@ export default function SignUp() {
 
   const onSubmit = async (e: Event) => {
     e.preventDefault();
+    setTouchedUsername(true);
+    setTouchedEmail(true);
+    setTouchedPassword(true);
+    if (!canSubmit()) return;
     setStatus(null);
     setBusy(true);
     try {
       const res = await api.post<{ ok: boolean; code?: string }>("/auth/signup", {
         username: username(),
         email: email(),
-        password: password()
+        password: password(),
       });
       if (!res.ok) {
         setStatus(res.code ?? "SIGNUP_FAILED");
@@ -66,7 +88,7 @@ export default function SignUp() {
           <div class="panelInner">
             <div class="title">
               <h1>Checking Access…</h1>
-              <p>Sign up is only visible to allow-listed IP addresses.</p>
+              <p>Sign up is only visible to allow-listed devices.</p>
             </div>
             <div class="card">
               <div class="cardInner">
@@ -76,7 +98,8 @@ export default function SignUp() {
                 </div>
                 {checkingTooLong() ? (
                   <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.5; margin-top: 10px">
-                    Still waiting for the server. Make sure the backend is running on http://localhost:3001.
+                    Still waiting for the server. Make sure the backend is running on
+                    http://localhost:3001.
                   </div>
                 ) : null}
                 <A class="pillLink" href="/sign-in">
@@ -96,32 +119,71 @@ export default function SignUp() {
         <div class="panelInner">
           <div class="title">
             <h1>Sign Up</h1>
-            <p>Access is restricted by IP allow-list. If you reached this page, your IP is allowed.</p>
+            <p>
+              Access is restricted by device allow-list. If you reached this page, your device is
+              allowed.
+            </p>
           </div>
 
           <div class="grid">
             <div class="card" style="grid-column: span 7">
               <div class="cardInner">
-                <form onSubmit={onSubmit} class="grid" style="grid-template-columns: repeat(12, 1fr); gap: 14px">
+                <form
+                  onSubmit={onSubmit}
+                  class="grid"
+                  style="grid-template-columns: repeat(12, 1fr); gap: 14px"
+                >
                   <div class="field" style="grid-column: span 12">
-                    <label>Username</label>
-                    <input value={username()} onInput={(e) => setUsername(e.currentTarget.value)} autocomplete="username" />
-                  </div>
-                  <div class="field" style="grid-column: span 12">
-                    <label>Email</label>
-                    <input value={email()} onInput={(e) => setEmail(e.currentTarget.value)} autocomplete="email" />
-                  </div>
-                  <div class="field" style="grid-column: span 12">
-                    <label>Password</label>
+                    <label for="username">
+                      Username<span class="fieldReq">*</span>
+                    </label>
                     <input
+                      id="username"
+                      class={usernameError() ? "inputError" : undefined}
+                      value={username()}
+                      onInput={(e) => setUsername(e.currentTarget.value)}
+                      onBlur={() => setTouchedUsername(true)}
+                      autocomplete="username"
+                    />
+                    <Show when={usernameError()}>
+                      <div class="fieldError">{usernameError()}</div>
+                    </Show>
+                  </div>
+                  <div class="field" style="grid-column: span 12">
+                    <label for="email">
+                      Email<span class="fieldReq">*</span>
+                    </label>
+                    <input
+                      id="email"
+                      class={emailError() ? "inputError" : undefined}
+                      value={email()}
+                      onInput={(e) => setEmail(e.currentTarget.value)}
+                      onBlur={() => setTouchedEmail(true)}
+                      autocomplete="email"
+                    />
+                    <Show when={emailError()}>
+                      <div class="fieldError">{emailError()}</div>
+                    </Show>
+                  </div>
+                  <div class="field" style="grid-column: span 12">
+                    <label for="password">
+                      Password<span class="fieldReq">*</span>
+                    </label>
+                    <input
+                      id="password"
                       type="password"
+                      class={passwordError() ? "inputError" : undefined}
                       value={password()}
                       onInput={(e) => setPassword(e.currentTarget.value)}
+                      onBlur={() => setTouchedPassword(true)}
                       autocomplete="new-password"
                     />
+                    <Show when={passwordError()}>
+                      <div class="fieldError">{passwordError()}</div>
+                    </Show>
                   </div>
                   <div style="grid-column: span 12; display: flex; gap: 10px; align-items: center; justify-content: space-between">
-                    <button class="btn btnHero" type="submit" disabled={busy()}>
+                    <button class="btn btnHero" type="submit" disabled={!canSubmit()}>
                       <span style="display: inline-flex; gap: 10px; align-items: center">
                         {busy() ? <span class="spinner" /> : null}
                         <span>{busy() ? "Working…" : "Sign Up"}</span>
@@ -132,7 +194,9 @@ export default function SignUp() {
                     </A>
                   </div>
                   {status() ? (
-                    <div style="grid-column: span 12; color: rgba(250,250,255,0.76); font-size: 14px">{status()}</div>
+                    <div style="grid-column: span 12; color: rgba(250,250,255,0.76); font-size: 14px">
+                      {status()}
+                    </div>
                   ) : null}
                 </form>
               </div>
@@ -143,11 +207,13 @@ export default function SignUp() {
                 <div style="display: grid; gap: 12px">
                   <div style="font-weight: 600; letter-spacing: -0.01em">Verification</div>
                   <div style="color: rgba(250,250,255,0.68); line-height: 1.5; font-size: 14px">
-                    A verification link is emailed to you and expires in about 1 day. Until verified, login is blocked.
+                    A verification link is emailed to you and expires in about 1 day. Until
+                    verified, login is blocked.
                   </div>
                   <div style="height: 1px; background: rgba(255,255,255,0.12)" />
                   <div style="color: rgba(250,250,255,0.68); line-height: 1.5; font-size: 14px">
-                    If you did not receive the email, check spam or contact your admin to re-issue a link.
+                    If you did not receive the email, check spam or contact your admin to re-issue a
+                    link.
                   </div>
                 </div>
               </div>
