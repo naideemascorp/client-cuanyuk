@@ -18,9 +18,11 @@ export default function AdminIp() {
 
   const [entries, setEntries] = createSignal<IpEntry[]>([]);
   const [ip, setIp] = createSignal("");
+  const [ipTouched, setIpTouched] = createSignal(false);
   const [note, setNote] = createSignal("");
   const [status, setStatus] = createSignal<"ACTIVE" | "INACTIVE">("ACTIVE");
   const [saving, setSaving] = createSignal(false);
+  const [toggleKey, setToggleKey] = createSignal<string | null>(null);
   const [loading, setLoading] = createSignal(false);
   const [query, setQuery] = createSignal("");
   const [statusFilter, setStatusFilter] = createSignal<"ALL" | "WHITELIST" | "BACKLIST">("ALL");
@@ -106,6 +108,7 @@ export default function AdminIp() {
 
   const save = async () => {
     const ipVal = ip().trim();
+    setIpTouched(true);
     if (!ipVal) return;
     setSaving(true);
     showToast("progress", "Submitting…");
@@ -117,6 +120,7 @@ export default function AdminIp() {
       });
       showToast("success", "Submitted.");
       setIp("");
+      setIpTouched(false);
       setNote("");
       setStatus("ACTIVE");
       await refresh();
@@ -128,7 +132,8 @@ export default function AdminIp() {
   };
 
   const toggleStatus = async (entry: IpEntry, nextStatus: "ACTIVE" | "INACTIVE") => {
-    setSaving(true);
+    if (toggleKey()) return;
+    setToggleKey(`${entry.id}:${nextStatus}`);
     showToast("progress", "Submitting…");
     try {
       await api.post("/admin/ips", {
@@ -141,7 +146,7 @@ export default function AdminIp() {
     } catch (e) {
       showToast("error", e instanceof Error ? e.message : "UPDATE_FAILED");
     } finally {
-      setSaving(false);
+      setToggleKey(null);
     }
   };
 
@@ -173,10 +178,15 @@ export default function AdminIp() {
                   </label>
                   <input
                     id="ip_address"
+                    class={ipTouched() && ip().trim().length === 0 ? "inputError" : undefined}
                     value={ip()}
                     onInput={(e) => setIp(e.currentTarget.value)}
+                    onBlur={() => setIpTouched(true)}
                     placeholder="e.g. 203.0.113.10"
                   />
+                  <Show when={ipTouched() && ip().trim().length === 0}>
+                    <div class="fieldError">IP Address is required.</div>
+                  </Show>
                 </div>
                 <div class="field">
                   <label for="ip_status">Status</label>
@@ -371,18 +381,28 @@ export default function AdminIp() {
                               <button
                                 class="btn"
                                 type="button"
-                                disabled={saving()}
+                                disabled={saving() || Boolean(toggleKey())}
                                 onClick={() => void toggleStatus(e, "ACTIVE")}
                               >
-                                Whitelist
+                                <span style="display: inline-flex; gap: 10px; align-items: center">
+                                  {toggleKey() === `${e.id}:ACTIVE` ? (
+                                    <span class="spinner" />
+                                  ) : null}
+                                  <span>Whitelist</span>
+                                </span>
                               </button>
                               <button
                                 class="btn"
                                 type="button"
-                                disabled={saving()}
+                                disabled={saving() || Boolean(toggleKey())}
                                 onClick={() => void toggleStatus(e, "INACTIVE")}
                               >
-                                Blacklist
+                                <span style="display: inline-flex; gap: 10px; align-items: center">
+                                  {toggleKey() === `${e.id}:INACTIVE` ? (
+                                    <span class="spinner" />
+                                  ) : null}
+                                  <span>Blacklist</span>
+                                </span>
                               </button>
                             </div>
                           </div>

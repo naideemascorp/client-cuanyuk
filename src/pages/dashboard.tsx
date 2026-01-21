@@ -272,10 +272,20 @@ export default function Dashboard(props: DashboardProps) {
       reader.readAsDataURL(file);
     });
 
+  const normalizeExternalUrl = (raw: string) => {
+    const url = raw.trim();
+    if (!url) return url;
+    if (/^(data|blob):/i.test(url)) return url;
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) return url;
+    if (url.startsWith("//")) return `https:${url}`;
+    if (url.startsWith("/")) return `${globalThis.location.origin}${url}`;
+    return `https://${url}`;
+  };
+
   const openUrl = (id: string, url: string) => {
     setOpenItemId(id);
     try {
-      window.open(url, "_blank", "noopener,noreferrer");
+      window.open(normalizeExternalUrl(url), "_blank", "noopener,noreferrer");
     } catch {}
     globalThis.setTimeout(() => {
       if (openItemId() === id) setOpenItemId(null);
