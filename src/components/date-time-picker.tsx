@@ -43,7 +43,14 @@ export function DateTimePicker(props: {
   const [draft, setDraft] = createSignal<Date | null>(null);
   const [text, setText] = createSignal("");
   const [editing, setEditing] = createSignal(false);
+  const [panelPos, setPanelPos] = createSignal<{ top: number; left: number; width: number }>({
+    top: 120,
+    left: 18,
+    width: 360,
+  });
   let wrapEl: HTMLDivElement | undefined;
+  let inputEl: HTMLInputElement | undefined;
+  let panelEl: HTMLDivElement | undefined;
 
   const minMs = createMemo(() => {
     const raw = props.minValue?.() ?? "";
@@ -71,6 +78,40 @@ export function DateTimePicker(props: {
     };
     globalThis.addEventListener("mousedown", onDown);
     onCleanup(() => globalThis.removeEventListener("mousedown", onDown));
+  });
+
+  createEffect(() => {
+    if (!open()) return;
+    const update = () => {
+      const input = inputEl;
+      if (!input) return;
+      const rect = input.getBoundingClientRect();
+      const vw = globalThis.innerWidth;
+      const vh = globalThis.innerHeight;
+      const width = Math.min(420, Math.max(280, vw - 24));
+      const left = Math.min(
+        Math.max(12, Math.round(rect.left)),
+        Math.max(12, Math.round(vw - width - 12)),
+      );
+      let top = Math.round(rect.bottom + 10);
+      const panelH = panelEl?.offsetHeight ?? 420;
+      if (vw <= 520) {
+        top = 86;
+        setPanelPos({ top, left: 12, width: vw - 24 });
+        return;
+      }
+      if (top + panelH > vh - 12) {
+        top = Math.max(12, Math.round(rect.top - 10 - panelH));
+      }
+      setPanelPos({ top, left, width });
+    };
+    globalThis.requestAnimationFrame(update);
+    globalThis.addEventListener("resize", update);
+    globalThis.addEventListener("scroll", update, true);
+    onCleanup(() => {
+      globalThis.removeEventListener("resize", update);
+      globalThis.removeEventListener("scroll", update, true);
+    });
   });
 
   createEffect(() => {
@@ -216,6 +257,9 @@ export function DateTimePicker(props: {
           }
         }}
         disabled={props.disabled}
+        ref={(el) => {
+          inputEl = el;
+        }}
       />
       <button
         class="dtpTrigger"
@@ -241,7 +285,17 @@ export function DateTimePicker(props: {
       </button>
 
       <Show when={open()}>
-        <div class="dtpPanel">
+        <div
+          class="dtpPanel"
+          style={{
+            top: `${panelPos().top}px`,
+            left: `${panelPos().left}px`,
+            width: `${panelPos().width}px`,
+          }}
+          ref={(el) => {
+            panelEl = el;
+          }}
+        >
           <div class="dtpHeader">
             <button
               class="dtpNav"

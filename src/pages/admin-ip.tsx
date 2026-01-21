@@ -127,6 +127,24 @@ export default function AdminIp() {
     }
   };
 
+  const toggleStatus = async (entry: IpEntry, nextStatus: "ACTIVE" | "INACTIVE") => {
+    setSaving(true);
+    showToast("progress", "Submitting…");
+    try {
+      await api.post("/admin/ips", {
+        ip: entry.ip,
+        status: nextStatus,
+        note: entry.note ?? undefined,
+      });
+      showToast("success", nextStatus === "ACTIVE" ? "Whitelisted." : "Blacklisted.");
+      await refresh();
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "UPDATE_FAILED");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div class="shell" style="place-items: start center">
       <div class="panel">
@@ -150,7 +168,9 @@ export default function AdminIp() {
               <div class="cardInner" style="display: grid; gap: 12px">
                 <div style="font-weight: 650; letter-spacing: -0.01em">Create/Update IP</div>
                 <div class="field">
-                  <label for="ip_address">IP Address</label>
+                  <label for="ip_address">
+                    IP Address<span class="fieldReq">*</span>
+                  </label>
                   <input
                     id="ip_address"
                     value={ip()}
@@ -352,15 +372,7 @@ export default function AdminIp() {
                                 class="btn"
                                 type="button"
                                 disabled={saving()}
-                                onClick={() =>
-                                  void api
-                                    .post("/admin/ips", {
-                                      ip: e.ip,
-                                      status: "ACTIVE",
-                                      note: e.note ?? undefined,
-                                    })
-                                    .then(refresh)
-                                }
+                                onClick={() => void toggleStatus(e, "ACTIVE")}
                               >
                                 Whitelist
                               </button>
@@ -368,15 +380,7 @@ export default function AdminIp() {
                                 class="btn"
                                 type="button"
                                 disabled={saving()}
-                                onClick={() =>
-                                  void api
-                                    .post("/admin/ips", {
-                                      ip: e.ip,
-                                      status: "INACTIVE",
-                                      note: e.note ?? undefined,
-                                    })
-                                    .then(refresh)
-                                }
+                                onClick={() => void toggleStatus(e, "INACTIVE")}
                               >
                                 Blacklist
                               </button>

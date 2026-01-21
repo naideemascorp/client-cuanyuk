@@ -30,6 +30,7 @@ type NotificationEntry = {
   publishAt: string;
   createdDate: string;
   updatedDate: string;
+  recipientUserIds?: string[];
 };
 
 type Tab = "ips" | "users" | "notifications";
@@ -92,7 +93,14 @@ export default function Admin() {
     createSignal<NotificationEntry["importance"]>("LOW");
   const [notifStatus, setNotifStatus] = createSignal<"ACTIVE" | "INACTIVE">("ACTIVE");
   const [notifPublishAt, setNotifPublishAt] = createSignal("");
+  const [notifRecipientUserIds, setNotifRecipientUserIds] = createSignal<string[]>([]);
   const [nowMs, setNowMs] = createSignal(Date.now());
+
+  const [welcomeLoading, setWelcomeLoading] = createSignal(false);
+  const [welcomeSaving, setWelcomeSaving] = createSignal(false);
+  const [welcomeTitle, setWelcomeTitle] = createSignal("");
+  const [welcomeDescription, setWelcomeDescription] = createSignal("");
+  const [welcomeStatus, setWelcomeStatus] = createSignal<"ACTIVE" | "INACTIVE">("ACTIVE");
 
   const closeToast = () => {
     if (toastTimer) globalThis.clearTimeout(toastTimer);
@@ -160,9 +168,35 @@ export default function Admin() {
     }
   };
 
+  const refreshWelcomeTemplate = async () => {
+    setWelcomeLoading(true);
+    try {
+      const res = await api.get<{
+        template: {
+          key: string;
+          status: "ACTIVE" | "INACTIVE";
+          title: string;
+          description: string;
+        };
+      }>("/admin/notification-templates/welcome");
+      setWelcomeTitle(res.template?.title ?? "");
+      setWelcomeDescription(res.template?.description ?? "");
+      setWelcomeStatus(res.template?.status ?? "ACTIVE");
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "LOAD_FAILED");
+    } finally {
+      setWelcomeLoading(false);
+    }
+  };
+
   const refreshAll = async (opts?: { skipIfBusy?: boolean }) => {
     if (opts?.skipIfBusy && (ipSaving() || userSaving() || notifSaving())) return;
-    await Promise.all([refreshIps(), refreshUsers(), refreshNotifications()]);
+    await Promise.all([
+      refreshIps(),
+      refreshUsers(),
+      refreshNotifications(),
+      refreshWelcomeTemplate(),
+    ]);
   };
 
   createEffect(() => {
@@ -180,6 +214,65 @@ export default function Admin() {
     if (notifPublishAt()) return;
     setNotifPublishAt(toDateTimeLocal(Date.now() + 60_000));
   });
+
+  const saveWelcomeTemplate = async () => {
+    setWelcomeSaving(true);
+    showToast("progress", "Submitting…");
+    try {
+      await api.post("/admin/notification-templates/welcome", {
+        title: welcomeTitle(),
+        description: welcomeDescription(),
+        status: welcomeStatus(),
+      });
+      showToast("success", "Submitted.");
+      await refreshWelcomeTemplate();
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "SAVE_FAILED");
+    } finally {
+      setWelcomeSaving(false);
+    }
+  };
+
+  const toggleNotificationStatus = async (e: NotificationEntry) => {
+    setNotifSaving(true);
+    showToast("progress", "Submitting…");
+    try {
+      const nextStatus = e.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+      await api.post("/admin/notifications", {
+        id: e.id,
+        title: e.title,
+        description: e.description,
+        importance: e.importance,
+        status: nextStatus,
+        publishAt: e.publishAt,
+        recipientUserIds: e.recipientUserIds ?? [],
+      });
+      showToast("success", nextStatus === "ACTIVE" ? "Activated." : "Deactivated.");
+      await refreshNotifications();
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "UPDATE_FAILED");
+    } finally {
+      setNotifSaving(false);
+    }
+  };
+
+  const toggleIpStatus = async (ipEntry: IpEntry, nextStatus: "ACTIVE" | "INACTIVE") => {
+    setIpSaving(true);
+    showToast("progress", "Submitting…");
+    try {
+      await api.post("/admin/ips", {
+        ip: ipEntry.ip,
+        status: nextStatus,
+        note: ipEntry.note ?? undefined,
+      });
+      showToast("success", nextStatus === "ACTIVE" ? "Whitelisted." : "Blacklisted.");
+      await refreshIps();
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "UPDATE_FAILED");
+    } finally {
+      setIpSaving(false);
+    }
+  };
 
   createEffect(() => {
     const me = auth.me();
@@ -293,6 +386,7 @@ export default function Admin() {
     setNotifDescription(n.description);
     setNotifImportance(n.importance);
     setNotifStatus(n.status === "INACTIVE" ? "INACTIVE" : "ACTIVE");
+    setNotifRecipientUserIds(n.recipientUserIds ?? []);
     const d = new Date(n.publishAt);
     setNotifPublishAt(Number.isFinite(d.getTime()) ? toDateTimeLocal(d.getTime()) : "");
   };
@@ -304,6 +398,7 @@ export default function Admin() {
     setNotifImportance("LOW");
     setNotifStatus("ACTIVE");
     setNotifPublishAt(toDateTimeLocal(Date.now() + 60_000));
+    setNotifRecipientUserIds([]);
   };
 
   const notifTitleValid = createMemo(() => notifTitle().trim().length >= 2);
@@ -330,6 +425,7 @@ export default function Admin() {
         importance: notifImportance(),
         status: notifStatus(),
         publishAt: publishAtDate.toISOString(),
+        recipientUserIds: notifRecipientUserIds(),
       });
       showToast("success", "Submitted.");
       cancelNotificationEdit();
@@ -425,6 +521,48 @@ export default function Admin() {
     return userFiltered().slice(start, start + userPageSize);
   });
 
+  if (auth.loading() || (!auth.loading() && !auth.me())) {
+    return (
+      <div class="shell" style="place-items: start center">
+        <div class="panel">
+          <div class="panelInner">
+            <div class="title" style="display: grid; gap: 14px">
+              <div class="skeleton" style="height: 28px; width: 180px; border-radius: 14px" />
+              <div style="display: flex; gap: 10px; flex-wrap: wrap">
+                <div class="skeleton" style="height: 38px; width: 140px; border-radius: 14px" />
+                <div class="skeleton" style="height: 38px; width: 160px; border-radius: 14px" />
+                <div class="skeleton" style="height: 38px; width: 170px; border-radius: 14px" />
+              </div>
+            </div>
+            <div class="grid">
+              <div class="card" style="grid-column: span 5; padding: 0">
+                <div class="cardInner" style="display: grid; gap: 12px">
+                  <div class="skeleton" style="height: 14px; width: 52%; border-radius: 10px" />
+                  <div class="skeleton" style="height: 44px; width: 100%; border-radius: 14px" />
+                  <div class="skeleton" style="height: 14px; width: 42%; border-radius: 10px" />
+                  <div class="skeleton" style="height: 44px; width: 100%; border-radius: 14px" />
+                  <div class="skeleton" style="height: 44px; width: 100%; border-radius: 14px" />
+                </div>
+              </div>
+              <div class="card" style="grid-column: span 7; padding: 0">
+                <div class="cardInner" style="display: grid; gap: 10px">
+                  <For each={[1, 2, 3, 4, 5, 6]}>
+                    {() => (
+                      <div
+                        class="skeleton"
+                        style="height: 62px; width: 100%; border-radius: 16px"
+                      />
+                    )}
+                  </For>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div class="shell" style="place-items: start center">
       <div class="panel">
@@ -484,105 +622,202 @@ export default function Admin() {
 
             <Show when={tab() === "notifications"}>
               <div class="grid">
-                <div class="card" style="grid-column: span 5">
-                  <div class="cardInner" style="display: grid; gap: 12px">
-                    <div style="font-weight: 650; letter-spacing: -0.01em">Create/Update Notif</div>
-                    <div class="field">
-                      <label for="admin_notif_title">
-                        Title<span class="fieldReq">*</span>
-                      </label>
-                      <input
-                        id="admin_notif_title"
-                        value={notifTitle()}
-                        onInput={(e) => setNotifTitle(e.currentTarget.value)}
-                        placeholder="e.g. New dashboard layout options"
-                      />
+                <div style="grid-column: span 5; display: grid; gap: 12px">
+                  <div class="card">
+                    <div class="cardInner" style="display: grid; gap: 12px">
+                      <div style="font-weight: 650; letter-spacing: -0.01em">
+                        Create/Update Notif
+                      </div>
+                      <div class="field">
+                        <label for="admin_notif_title">
+                          Title<span class="fieldReq">*</span>
+                        </label>
+                        <input
+                          id="admin_notif_title"
+                          value={notifTitle()}
+                          onInput={(e) => setNotifTitle(e.currentTarget.value)}
+                          placeholder="e.g. New dashboard layout options"
+                        />
+                      </div>
+                      <div class="field">
+                        <label for="admin_notif_desc">
+                          Description<span class="fieldReq">*</span>
+                        </label>
+                        <input
+                          id="admin_notif_desc"
+                          value={notifDescription()}
+                          onInput={(e) => setNotifDescription(e.currentTarget.value)}
+                          placeholder="e.g. You can now view items by category/merchant/link/QRIS."
+                        />
+                      </div>
+                      <div class="field">
+                        <label for="admin_notif_importance">Severity</label>
+                        <select
+                          id="admin_notif_importance"
+                          class="select"
+                          value={notifImportance()}
+                          onChange={(e) =>
+                            setNotifImportance(
+                              e.currentTarget.value as NotificationEntry["importance"],
+                            )
+                          }
+                        >
+                          <option value="LOW">Low</option>
+                          <option value="MEDIUM">Medium</option>
+                          <option value="HIGH">High</option>
+                          <option value="CRITICAL">Critical</option>
+                        </select>
+                      </div>
+                      <div class="field">
+                        <label for="admin_notif_publish">Publish Date</label>
+                        <DateTimePicker
+                          id="admin_notif_publish"
+                          value={notifPublishAt}
+                          onChange={setNotifPublishAt}
+                          minValue={minPublishLocal}
+                          disabled={notifSaving()}
+                        />
+                      </div>
+                      <div class="field">
+                        <label for="admin_notif_status">Status</label>
+                        <select
+                          id="admin_notif_status"
+                          class="select"
+                          value={notifStatus()}
+                          onChange={(e) =>
+                            setNotifStatus(e.currentTarget.value as "ACTIVE" | "INACTIVE")
+                          }
+                        >
+                          <option value="ACTIVE">Active</option>
+                          <option value="INACTIVE">Inactive</option>
+                        </select>
+                      </div>
+                      <div class="field">
+                        <label for="admin_notif_recipients">Recipients</label>
+                        <select
+                          id="admin_notif_recipients"
+                          class="select"
+                          multiple
+                          value={notifRecipientUserIds()}
+                          onChange={(e) =>
+                            setNotifRecipientUserIds(
+                              Array.from(e.currentTarget.selectedOptions)
+                                .map((o) => o.value)
+                                .filter(Boolean),
+                            )
+                          }
+                          disabled={notifSaving()}
+                        >
+                          <For each={users().filter((u) => u.status === "ACTIVE")}>
+                            {(u) => (
+                              <option value={u.id}>
+                                {u.username} • {u.email}
+                              </option>
+                            )}
+                          </For>
+                        </select>
+                        <div style="color: rgba(250,250,255,0.64); font-size: 12px; line-height: 1.35">
+                          Leave empty to send to everyone.
+                        </div>
+                      </div>
+                      <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end">
+                        <Show when={editingNotifId()}>
+                          <button
+                            class="btn"
+                            type="button"
+                            disabled={notifSaving()}
+                            onClick={cancelNotificationEdit}
+                          >
+                            Cancel
+                          </button>
+                        </Show>
+                        <button
+                          class="btn btnPrimary"
+                          type="button"
+                          disabled={notifSaving() || !notifTitleValid() || !notifDescValid()}
+                          onClick={() => void saveNotification()}
+                        >
+                          <span style="display: inline-flex; gap: 10px; align-items: center">
+                            {notifSaving() ? <span class="spinner" /> : null}
+                            <span>{notifSaving() ? "Submitting…" : "Submit"}</span>
+                          </span>
+                        </button>
+                      </div>
                     </div>
-                    <div class="field">
-                      <label for="admin_notif_desc">
-                        Description<span class="fieldReq">*</span>
-                      </label>
-                      <input
-                        id="admin_notif_desc"
-                        value={notifDescription()}
-                        onInput={(e) => setNotifDescription(e.currentTarget.value)}
-                        placeholder="e.g. You can now view items by category/merchant/link/QRIS."
-                      />
-                    </div>
-                    <div class="field">
-                      <label for="admin_notif_importance">Severity</label>
-                      <select
-                        id="admin_notif_importance"
-                        class="select"
-                        value={notifImportance()}
-                        onChange={(e) =>
-                          setNotifImportance(
-                            e.currentTarget.value as NotificationEntry["importance"],
-                          )
-                        }
-                      >
-                        <option value="LOW">Low</option>
-                        <option value="MEDIUM">Medium</option>
-                        <option value="HIGH">High</option>
-                        <option value="CRITICAL">Critical</option>
-                      </select>
-                    </div>
-                    <div class="field">
-                      <label for="admin_notif_publish">
-                        Publish Date<span class="fieldReq">*</span>
-                      </label>
-                      <DateTimePicker
-                        id="admin_notif_publish"
-                        value={notifPublishAt}
-                        onChange={setNotifPublishAt}
-                        minValue={minPublishLocal}
-                        disabled={notifSaving()}
-                      />
-                      <Show when={!notifPublishValid() && notifPublishAt().trim().length > 0}>
-                        <div class="fieldError">Please choose a future date/time.</div>
-                      </Show>
-                    </div>
-                    <div class="field">
-                      <label for="admin_notif_status">Status</label>
-                      <select
-                        id="admin_notif_status"
-                        class="select"
-                        value={notifStatus()}
-                        onChange={(e) =>
-                          setNotifStatus(e.currentTarget.value as "ACTIVE" | "INACTIVE")
-                        }
-                      >
-                        <option value="ACTIVE">Active</option>
-                        <option value="INACTIVE">Inactive</option>
-                      </select>
-                    </div>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end">
-                      <Show when={editingNotifId()}>
+                  </div>
+
+                  <div class="card">
+                    <div class="cardInner" style="display: grid; gap: 12px">
+                      <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
+                        <div style="font-weight: 650; letter-spacing: -0.01em">
+                          Welcome Template
+                        </div>
                         <button
                           class="btn"
                           type="button"
-                          disabled={notifSaving()}
-                          onClick={cancelNotificationEdit}
+                          disabled={welcomeLoading() || welcomeSaving()}
+                          onClick={() => void refreshWelcomeTemplate()}
                         >
-                          Cancel
+                          <span style="display: inline-flex; gap: 10px; align-items: center">
+                            {welcomeLoading() ? <span class="spinner" /> : null}
+                            <span>{welcomeLoading() ? "Loading…" : "Refresh"}</span>
+                          </span>
                         </button>
-                      </Show>
-                      <button
-                        class="btn btnPrimary"
-                        type="button"
-                        disabled={
-                          notifSaving() ||
-                          !notifTitleValid() ||
-                          !notifDescValid() ||
-                          !notifPublishValid()
-                        }
-                        onClick={() => void saveNotification()}
-                      >
-                        <span style="display: inline-flex; gap: 10px; align-items: center">
-                          {notifSaving() ? <span class="spinner" /> : null}
-                          <span>{notifSaving() ? "Submitting…" : "Submit"}</span>
-                        </span>
-                      </button>
+                      </div>
+                      <div style="color: rgba(250,250,255,0.66); font-size: 12px; line-height: 1.4">
+                        Placeholders: {"{{name}}"}, {"{{username}}"}, {"{{email}}"}, {"{{role}}"},{" "}
+                        {"{{now}}"}, {"{{createdAt}}"}
+                      </div>
+                      <div class="field">
+                        <label for="admin_welcome_title">Title</label>
+                        <input
+                          id="admin_welcome_title"
+                          value={welcomeTitle()}
+                          onInput={(e) => setWelcomeTitle(e.currentTarget.value)}
+                          placeholder="Welcome, {{name}}!"
+                          disabled={welcomeSaving()}
+                        />
+                      </div>
+                      <div class="field">
+                        <label for="admin_welcome_desc">Description</label>
+                        <textarea
+                          id="admin_welcome_desc"
+                          class="textarea"
+                          value={welcomeDescription()}
+                          onInput={(e) => setWelcomeDescription(e.currentTarget.value)}
+                          placeholder="Hi {{name}} — welcome to Cuan Yuk! Created: {{createdAt}}"
+                          disabled={welcomeSaving()}
+                          rows={4}
+                        />
+                      </div>
+                      <div class="field">
+                        <label for="admin_welcome_status">Status</label>
+                        <select
+                          id="admin_welcome_status"
+                          class="select"
+                          value={welcomeStatus()}
+                          onChange={(e) =>
+                            setWelcomeStatus(e.currentTarget.value as "ACTIVE" | "INACTIVE")
+                          }
+                          disabled={welcomeSaving()}
+                        >
+                          <option value="ACTIVE">Active</option>
+                          <option value="INACTIVE">Inactive</option>
+                        </select>
+                      </div>
+                      <div style="display: flex; justify-content: flex-end">
+                        <button
+                          class="btn btnPrimary"
+                          type="button"
+                          disabled={welcomeSaving() || welcomeTitle().trim().length < 2}
+                          onClick={() => void saveWelcomeTemplate()}
+                        >
+                          <span style="display: inline-flex; gap: 10px; align-items: center">
+                            {welcomeSaving() ? <span class="spinner" /> : null}
+                            <span>{welcomeSaving() ? "Submitting…" : "Submit"}</span>
+                          </span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -774,6 +1009,12 @@ export default function Admin() {
                                   <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.4">
                                     {e.description}
                                   </div>
+                                  <Show when={(e.recipientUserIds ?? []).length > 0}>
+                                    <div style="color: rgba(250,250,255,0.55); font-size: 12px">
+                                      Recipients: {(e.recipientUserIds ?? []).length} user
+                                      {(e.recipientUserIds ?? []).length === 1 ? "" : "s"}
+                                    </div>
+                                  </Show>
                                   <div style="display: flex; gap: 10px; flex-wrap: wrap">
                                     <button
                                       class="btn"
@@ -787,18 +1028,7 @@ export default function Admin() {
                                       class="btn"
                                       type="button"
                                       disabled={notifSaving()}
-                                      onClick={() =>
-                                        void api
-                                          .post("/admin/notifications", {
-                                            id: e.id,
-                                            title: e.title,
-                                            description: e.description,
-                                            importance: e.importance,
-                                            status: e.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
-                                            publishAt: e.publishAt,
-                                          })
-                                          .then(refreshNotifications)
-                                      }
+                                      onClick={() => void toggleNotificationStatus(e)}
                                     >
                                       {e.status === "ACTIVE" ? "Deactivate" : "Activate"}
                                     </button>
@@ -850,7 +1080,9 @@ export default function Admin() {
                   <div class="cardInner" style="display: grid; gap: 12px">
                     <div style="font-weight: 650; letter-spacing: -0.01em">Create/Update IP</div>
                     <div class="field">
-                      <label for="admin_ip_address">IP Address</label>
+                      <label for="admin_ip_address">
+                        IP Address<span class="fieldReq">*</span>
+                      </label>
                       <input
                         id="admin_ip_address"
                         value={ip()}
@@ -1072,15 +1304,7 @@ export default function Admin() {
                                       class="btn"
                                       type="button"
                                       disabled={ipSaving()}
-                                      onClick={() =>
-                                        void api
-                                          .post("/admin/ips", {
-                                            ip: e.ip,
-                                            status: "ACTIVE",
-                                            note: e.note ?? undefined,
-                                          })
-                                          .then(refreshIps)
-                                      }
+                                      onClick={() => void toggleIpStatus(e, "ACTIVE")}
                                     >
                                       Whitelist
                                     </button>
@@ -1090,15 +1314,7 @@ export default function Admin() {
                                       class="btn"
                                       type="button"
                                       disabled={ipSaving()}
-                                      onClick={() =>
-                                        void api
-                                          .post("/admin/ips", {
-                                            ip: e.ip,
-                                            status: "INACTIVE",
-                                            note: e.note ?? undefined,
-                                          })
-                                          .then(refreshIps)
-                                      }
+                                      onClick={() => void toggleIpStatus(e, "INACTIVE")}
                                     >
                                       Blacklist
                                     </button>

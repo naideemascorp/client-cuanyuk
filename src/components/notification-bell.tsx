@@ -31,7 +31,11 @@ const severityText = (v: string) =>
 export function NotificationBell() {
   const n = useNotifications();
   const [open, setOpen] = createSignal(false);
-  const [pos, setPos] = createSignal<{ top: number; right: number }>({ top: 70, right: 18 });
+  const [pos, setPos] = createSignal<{ top: number; left: number; width: number }>({
+    top: 70,
+    left: 18,
+    width: 360,
+  });
   let wrapEl: HTMLDivElement | undefined;
   let buttonEl: HTMLButtonElement | undefined;
 
@@ -55,9 +59,14 @@ export function NotificationBell() {
       const btn = buttonEl;
       if (!btn) return;
       const rect = btn.getBoundingClientRect();
-      const top = Math.round(rect.bottom + 10);
-      const right = Math.max(12, Math.round(globalThis.innerWidth - rect.right));
-      setPos({ top, right });
+      const vw = globalThis.innerWidth;
+      const width = Math.min(420, Math.max(280, vw - 24));
+      const top = vw <= 520 ? 92 : Math.round(rect.bottom + 10);
+      const left =
+        vw <= 520
+          ? 12
+          : Math.min(Math.max(12, Math.round(rect.right - width)), Math.round(vw - width - 12));
+      setPos({ top, left, width });
     };
     update();
     globalThis.addEventListener("resize", update);
@@ -114,7 +123,10 @@ export function NotificationBell() {
       </button>
 
       <Show when={open()}>
-        <div class="notifPanel" style={{ top: `${pos().top}px`, right: `${pos().right}px` }}>
+        <div
+          class="notifPanel"
+          style={{ top: `${pos().top}px`, left: `${pos().left}px`, width: `${pos().width}px` }}
+        >
           <div class="notifHeader">
             <div class="notifTitle">Updates</div>
             <button
