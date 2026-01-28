@@ -13,9 +13,7 @@
     "jsxImportSource": "solid-js",
     "types": ["bun-types"],
     "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    },
+    "paths": { "@/*": ["src/*"] },
     "strict": true
   },
   "include": ["src"]

@@ -1,4 +1,8 @@
 .env
-.vscode
-dist
+**/.DS_Store
+**/.idea
+**/.vscode
+build
 node_modules
+src-tauri/gen
+src-tauri/target
