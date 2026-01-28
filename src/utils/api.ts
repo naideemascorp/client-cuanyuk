@@ -81,7 +81,12 @@ const request = async <T>(
           const parsed = JSON.parse(trimmed) as { code?: unknown; message?: unknown } | null;
           if (parsed && typeof parsed === "object") {
             const code = typeof parsed.code === "string" ? parsed.code : null;
-            const message = typeof parsed.message === "string" ? parsed.message : null;
+            const message =
+              typeof parsed.message === "string"
+                ? parsed.message
+                : parsed.message
+                  ? JSON.stringify(parsed.message)
+                  : null;
             throw new Error(code || message || trimmed);
           }
         } catch {}
@@ -91,7 +96,19 @@ const request = async <T>(
     }
     if (!text) return {} as T;
     try {
-      return JSON.parse(text) as T;
+      const parsed = JSON.parse(text) as unknown;
+      if (parsed && typeof parsed === "object") {
+        const rec = parsed as Record<string, unknown>;
+        const code = rec.code;
+        if (code === "00" || code === "09") {
+          return (rec.data ?? {}) as T;
+        }
+        if (code === "99") {
+          const msg = rec.message ? JSON.stringify(rec.message) : "REQUEST_FAILED";
+          throw new Error(msg);
+        }
+      }
+      return parsed as T;
     } catch {
       throw new Error(text.trim() || "INVALID_RESPONSE");
     }

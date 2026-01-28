@@ -1121,7 +1121,7 @@ export default function Dashboard(props: DashboardProps) {
                                         </div>
                                         <div class="merchantStats">
                                           <div class="merchantStat">
-                                            <div class="merchantStatLabel">Links</div>
+                                            <div class="merchantStatLabel">Link/s</div>
                                             <div class="merchantStatValue">{sum().links}</div>
                                           </div>
                                           <div class="merchantStat">
@@ -1224,7 +1224,7 @@ export default function Dashboard(props: DashboardProps) {
                                   </div>
                                   <div class="merchantStats">
                                     <div class="merchantStat">
-                                      <div class="merchantStatLabel">Links</div>
+                                      <div class="merchantStatLabel">Link/s</div>
                                       <div class="merchantStatValue">{sum().links}</div>
                                     </div>
                                     <div class="merchantStat">
