@@ -88,7 +88,7 @@ export default function SignUp() {
           <div class="panelInner">
             <div class="title">
               <h1>Checking Access…</h1>
-              <p>Sign up is only visible to allow-listed IP addresses.</p>
+              <p>Sign up is only visible to allow-listed devices.</p>
             </div>
             <div class="card">
               <div class="cardInner">
@@ -120,7 +120,7 @@ export default function SignUp() {
           <div class="title">
             <h1>Sign Up</h1>
             <p>
-              Access is restricted by IP allow-list. If you reached this page, your IP is allowed.
+              Access is restricted by device allow-list. If you reached this page, your device is allowed.
             </p>
           </div>
 

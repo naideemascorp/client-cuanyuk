@@ -169,7 +169,7 @@ export default function Admin() {
   );
 
   const ipError = createMemo(() =>
-    ipTouched() && ip().trim().length === 0 ? "IP Address is required." : "",
+    ipTouched() && ip().trim().length === 0 ? "Device ID is required." : "",
   );
 
   const userLabelById = createMemo(() => {
@@ -232,7 +232,7 @@ export default function Admin() {
   const refreshIps = async () => {
     setIpLoading(true);
     try {
-      const res = await api.get<{ entries: IpEntry[] }>("/admin/ips");
+      const res = await api.get<{ entries: IpEntry[] }>("/admin/devices");
       setIpEntries(res.entries ?? []);
     } catch (e) {
       showToast("error", e instanceof Error ? e.message : "LOAD_FAILED");
@@ -382,7 +382,7 @@ export default function Admin() {
     setIpToggleId(ipEntry.id);
     showToast("progress", "Submitting…");
     try {
-      await api.post("/admin/ips", {
+      await api.post("/admin/devices", {
         ip: ipEntry.ip,
         status: nextStatus,
         note: ipEntry.note ?? undefined,
@@ -421,7 +421,7 @@ export default function Admin() {
     setIpSaving(true);
     showToast("progress", "Submitting…");
     try {
-      await api.post("/admin/ips", {
+      await api.post("/admin/devices", {
         ip: ipVal,
         status: ipStatus(),
         note: ipNote().trim() || undefined,
@@ -755,7 +755,7 @@ export default function Admin() {
                     type="button"
                     onClick={() => setTab("ips")}
                   >
-                    IP Management
+                    Device Management
                   </button>
                   <button
                     class={`btn ${tab() === "users" ? "btnPrimary" : ""}`}
@@ -1334,11 +1334,11 @@ export default function Admin() {
                     <div class="card" style="grid-column: span 5">
                       <div class="cardInner" style="display: grid; gap: 12px">
                         <div style="font-weight: 650; letter-spacing: -0.01em">
-                          Create/Update IP
+                          Create/Update Device
                         </div>
                         <div class="field">
                           <label for="admin_ip_address">
-                            IP Address<span class="fieldReq">*</span>
+                            Device ID<span class="fieldReq">*</span>
                           </label>
                           <input
                             id="admin_ip_address"
@@ -1346,7 +1346,7 @@ export default function Admin() {
                             value={ip()}
                             onInput={(e) => setIp(e.currentTarget.value)}
                             onBlur={() => setIpTouched(true)}
-                            placeholder="e.g. 203.0.113.10"
+                            placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
                           />
                           <Show when={ipError()}>
                             <div class="fieldError">{ipError()}</div>
@@ -1372,7 +1372,7 @@ export default function Admin() {
                             id="admin_ip_remarks"
                             value={ipNote()}
                             onInput={(e) => setIpNote(e.currentTarget.value)}
-                            placeholder="e.g. Office Wi‑Fi"
+                            placeholder="e.g. Dimas MacBook Pro"
                           />
                         </div>
                         <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end">
@@ -1404,7 +1404,9 @@ export default function Admin() {
                     <div class="card" style="grid-column: span 7">
                       <div class="cardInner" style="display: grid; gap: 12px">
                         <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
-                          <div style="font-weight: 650; letter-spacing: -0.01em">IP Management</div>
+                          <div style="font-weight: 650; letter-spacing: -0.01em">
+                            Device Management
+                          </div>
                           <button
                             class="btn"
                             type="button"
@@ -1443,7 +1445,7 @@ export default function Admin() {
                                 id="admin_ip_search"
                                 value={ipQuery()}
                                 onInput={(e) => setIpQuery(e.currentTarget.value)}
-                                placeholder="Search IP or remarks"
+                                placeholder="Search device ID or remarks"
                               />
                               <button
                                 class="inputIconBtn"
