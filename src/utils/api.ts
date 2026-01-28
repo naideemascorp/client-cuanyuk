@@ -1,4 +1,12 @@
-const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
+const rawBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
+const useDevProxy = (() => {
+  if (!import.meta.env.DEV) return false;
+  if (typeof rawBaseUrl !== "string") return false;
+  const v = rawBaseUrl.trim().toLowerCase();
+  return v.startsWith("http://") || v.startsWith("https://");
+})();
+
+const baseUrl = useDevProxy ? "" : rawBaseUrl;
 
 const jsonHeaders = { "content-type": "application/json" };
 
