@@ -22,17 +22,6 @@ type PaymentItem = {
 };
 
 const computeWsBase = () => {
-  const isDevLocalhost =
-    import.meta.env.DEV &&
-    typeof globalThis.window !== "undefined" &&
-    (globalThis.location?.hostname === "localhost" ||
-      globalThis.location?.hostname === "127.0.0.1");
-  if (isDevLocalhost) {
-    const isHttpsPage = globalThis.location?.protocol === "https:";
-    const wsProtocol = isHttpsPage ? "wss:" : "ws:";
-    return `${wsProtocol}//${globalThis.location.host}`;
-  }
-
   const explicit = import.meta.env.VITE_WS_BASE_URL;
   const isHttpsPage =
     typeof globalThis.window !== "undefined" && globalThis.location?.protocol === "https:";

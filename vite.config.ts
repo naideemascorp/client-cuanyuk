@@ -20,6 +20,13 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
   const apiBase = env.VITE_API_BASE_URL?.trim() || "http://localhost:3001";
   const wsTarget = computeWsTarget(apiBase, env.VITE_WS_BASE_URL);
+  let wsProxy: Record<string, unknown> | null = null;
+  try {
+    const u = new URL(wsTarget);
+    const host = u.hostname.toLowerCase();
+    const isLocal = host === "localhost" || host === "127.0.0.1";
+    if (isLocal) wsProxy = { target: wsTarget, ws: true, changeOrigin: true, secure: false };
+  } catch {}
 
   return {
     build: { outDir: "build" },
@@ -43,7 +50,7 @@ export default defineConfig(({ mode }) => {
         "/docs": { target: apiBase, changeOrigin: true, secure: true },
         "/assets": { target: apiBase, changeOrigin: true, secure: true },
         "/health": { target: apiBase, changeOrigin: true, secure: true },
-        "/ws": { target: wsTarget, ws: true, changeOrigin: true, secure: true },
+        ...(wsProxy ? { "/ws": wsProxy } : {}),
       },
       hmr: host
         ? {
