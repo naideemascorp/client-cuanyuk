@@ -33,6 +33,7 @@ type NotificationEntry = {
   title: string;
   description: string;
   importance: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  isWelcome?: boolean;
   status: "ACTIVE" | "INACTIVE" | "PENDING" | "DELETED";
   publishAt: string;
   createdDate: string;
@@ -105,6 +106,7 @@ export default function Admin() {
     createSignal<NotificationEntry["importance"]>("LOW");
   const [notifStatus, setNotifStatus] = createSignal<"ACTIVE" | "INACTIVE">("ACTIVE");
   const [notifPublishAt, setNotifPublishAt] = createSignal("");
+  const [notifIsWelcome, setNotifIsWelcome] = createSignal(false);
   const [notifRecipientUserIds, setNotifRecipientUserIds] = createSignal<string[]>([]);
   const [notifRecipientOrganizationIds, setNotifRecipientOrganizationIds] = createSignal<string[]>(
     [],
@@ -113,15 +115,7 @@ export default function Admin() {
   const [nowMs, setNowMs] = createSignal(Date.now());
 
   const [organizations, setOrganizations] = createSignal<OrganizationEntry[]>([]);
-  const [orgLoading, setOrgLoading] = createSignal(false);
-
-  const [welcomeLoading, setWelcomeLoading] = createSignal(false);
-  const [welcomeSaving, setWelcomeSaving] = createSignal(false);
-  const [welcomeTitle, setWelcomeTitle] = createSignal("");
-  const [welcomeDescription, setWelcomeDescription] = createSignal("");
-  const [welcomeStatus, setWelcomeStatus] = createSignal<"ACTIVE" | "INACTIVE">("ACTIVE");
-
-  const [composerTarget, setComposerTarget] = createSignal<"NOTIF" | "WELCOME">("NOTIF");
+  const [_orgLoading, setOrgLoading] = createSignal(false);
 
   const [recipientsModalOpen, setRecipientsModalOpen] = createSignal(false);
   const [recipientsSearch, setRecipientsSearch] = createSignal("");
@@ -183,23 +177,7 @@ export default function Admin() {
     for (const o of organizations()) map.set(o.id, o.displayName);
     return map;
   });
-
-  const composerTitle = () => (composerTarget() === "WELCOME" ? welcomeTitle() : notifTitle());
-  const setComposerTitle = (next: string) =>
-    composerTarget() === "WELCOME" ? setWelcomeTitle(next) : setNotifTitle(next);
-
-  const composerDescription = () =>
-    composerTarget() === "WELCOME" ? welcomeDescription() : notifDescription();
-  const setComposerDescription = (next: string) =>
-    composerTarget() === "WELCOME" ? setWelcomeDescription(next) : setNotifDescription(next);
-
-  const composerStatus = () => (composerTarget() === "WELCOME" ? welcomeStatus() : notifStatus());
-  const setComposerStatus = (next: "ACTIVE" | "INACTIVE") =>
-    composerTarget() === "WELCOME" ? setWelcomeStatus(next) : setNotifStatus(next);
-
-  const composerSaving = createMemo(() =>
-    composerTarget() === "WELCOME" ? welcomeSaving() : notifSaving(),
-  );
+  const composerSaving = createMemo(() => notifSaving());
 
   const filteredRecipientsUsers = createMemo(() => {
     const q = recipientsSearch().trim().toLowerCase();
@@ -277,27 +255,6 @@ export default function Admin() {
     }
   };
 
-  const refreshWelcomeTemplate = async () => {
-    setWelcomeLoading(true);
-    try {
-      const res = await api.get<{
-        template: {
-          key: string;
-          status: "ACTIVE" | "INACTIVE";
-          title: string;
-          description: string;
-        };
-      }>("/admin/notification-templates/welcome");
-      setWelcomeTitle(res.template?.title ?? "");
-      setWelcomeDescription(res.template?.description ?? "");
-      setWelcomeStatus(res.template?.status ?? "ACTIVE");
-    } catch (e) {
-      showToast("error", e instanceof Error ? e.message : "LOAD_FAILED");
-    } finally {
-      setWelcomeLoading(false);
-    }
-  };
-
   const refreshAll = async (opts?: { skipIfBusy?: boolean }) => {
     if (
       opts?.skipIfBusy &&
@@ -313,7 +270,6 @@ export default function Admin() {
       refreshUsers(),
       refreshNotifications(),
       refreshOrganizations(),
-      refreshWelcomeTemplate(),
     ]);
   };
 
@@ -333,24 +289,6 @@ export default function Admin() {
     setNotifPublishAt(toDateTimeLocal(Date.now() + 60_000));
   });
 
-  const saveWelcomeTemplate = async () => {
-    setWelcomeSaving(true);
-    showToast("progress", "Submitting…");
-    try {
-      await api.post("/admin/notification-templates/welcome", {
-        title: welcomeTitle(),
-        description: welcomeDescription(),
-        status: welcomeStatus(),
-      });
-      showToast("success", "Submitted.");
-      await refreshWelcomeTemplate();
-    } catch (e) {
-      showToast("error", e instanceof Error ? e.message : "SAVE_FAILED");
-    } finally {
-      setWelcomeSaving(false);
-    }
-  };
-
   const toggleNotificationStatus = async (e: NotificationEntry) => {
     if (notifToggleId()) return;
     setNotifToggleId(e.id);
@@ -362,6 +300,7 @@ export default function Admin() {
         title: e.title,
         description: e.description,
         importance: e.importance,
+        isWelcome: Boolean(e.isWelcome),
         status: nextStatus,
         publishAt: e.publishAt,
         recipientUserIds: e.recipientUserIds ?? [],
@@ -511,6 +450,7 @@ export default function Admin() {
     setNotifDescription(n.description);
     setNotifImportance(n.importance);
     setNotifStatus(n.status === "INACTIVE" ? "INACTIVE" : "ACTIVE");
+    setNotifIsWelcome(Boolean(n.isWelcome));
     setNotifRecipientUserIds(n.recipientUserIds ?? []);
     setNotifRecipientOrganizationIds(n.recipientOrganizationIds ?? []);
     setNotifRecipientRoles(n.recipientRoles ?? []);
@@ -525,6 +465,7 @@ export default function Admin() {
     setNotifImportance("LOW");
     setNotifStatus("ACTIVE");
     setNotifPublishAt(toDateTimeLocal(Date.now() + 60_000));
+    setNotifIsWelcome(false);
     setNotifRecipientUserIds([]);
     setNotifRecipientOrganizationIds([]);
     setNotifRecipientRoles([]);
@@ -552,6 +493,7 @@ export default function Admin() {
         title,
         description,
         importance: notifImportance(),
+        isWelcome: notifIsWelcome(),
         status: notifStatus(),
         publishAt: publishAtDate.toISOString(),
         recipientUserIds: notifRecipientUserIds(),
@@ -779,32 +721,10 @@ export default function Admin() {
                       <div class="cardInner" style="display: grid; gap: 16px">
                         <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
                           <div style="font-weight: 650; letter-spacing: -0.01em">
-                            Notif Composer
+                            Message Composer
                           </div>
                           <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center">
-                            <div class="segmented">
-                              <button
-                                classList={{
-                                  segBtn: true,
-                                  segBtnActive: composerTarget() === "NOTIF",
-                                }}
-                                type="button"
-                                onClick={() => setComposerTarget("NOTIF")}
-                              >
-                                Notification
-                              </button>
-                              <button
-                                classList={{
-                                  segBtn: true,
-                                  segBtnActive: composerTarget() === "WELCOME",
-                                }}
-                                type="button"
-                                onClick={() => setComposerTarget("WELCOME")}
-                              >
-                                Welcome
-                              </button>
-                            </div>
-                            <Show when={composerTarget() === "NOTIF" && editingNotifId()}>
+                            <Show when={editingNotifId()}>
                               <button
                                 class="btn"
                                 type="button"
@@ -817,18 +737,8 @@ export default function Admin() {
                             <button
                               class="btn btnPrimary"
                               type="button"
-                              disabled={
-                                composerSaving() ||
-                                (composerTarget() === "NOTIF"
-                                  ? !notifTitleValid() || !notifDescValid()
-                                  : composerTitle().trim().length < 2 ||
-                                    composerDescription().trim().length < 2)
-                              }
-                              onClick={() =>
-                                void (composerTarget() === "WELCOME"
-                                  ? saveWelcomeTemplate()
-                                  : saveNotification())
-                              }
+                              disabled={composerSaving() || !notifTitleValid() || !notifDescValid()}
+                              onClick={() => void saveNotification()}
                             >
                               <span style="display: inline-flex; gap: 10px; align-items: center">
                                 {composerSaving() ? <span class="spinner" /> : null}
@@ -845,8 +755,8 @@ export default function Admin() {
                             </label>
                             <input
                               id="admin_notif_title"
-                              value={composerTitle()}
-                              onInput={(e) => setComposerTitle(e.currentTarget.value)}
+                              value={notifTitle()}
+                              onInput={(e) => setNotifTitle(e.currentTarget.value)}
                               placeholder="Heads up, {{name}}: new feature just dropped"
                             />
                           </div>
@@ -856,8 +766,8 @@ export default function Admin() {
                             </label>
                             <input
                               id="admin_notif_desc"
-                              value={composerDescription()}
-                              onInput={(e) => setComposerDescription(e.currentTarget.value)}
+                              value={notifDescription()}
+                              onInput={(e) => setNotifDescription(e.currentTarget.value)}
                               placeholder="Try it now and let’s see what you build next."
                             />
                           </div>
@@ -867,9 +777,9 @@ export default function Admin() {
                             <select
                               id="admin_composer_status"
                               class="select"
-                              value={composerStatus()}
+                              value={notifStatus()}
                               onChange={(e) =>
-                                setComposerStatus(e.currentTarget.value as "ACTIVE" | "INACTIVE")
+                                setNotifStatus(e.currentTarget.value as "ACTIVE" | "INACTIVE")
                               }
                               disabled={composerSaving()}
                             >
@@ -878,110 +788,120 @@ export default function Admin() {
                             </select>
                           </div>
 
-                          <Show when={composerTarget() === "NOTIF"}>
-                            <div class="filterRow filterRow2">
-                              <div class="field" style="margin: 0">
-                                <label for="admin_notif_importance">Severity</label>
-                                <select
-                                  id="admin_notif_importance"
-                                  class="select"
-                                  value={notifImportance()}
-                                  onChange={(e) =>
-                                    setNotifImportance(
-                                      e.currentTarget.value as NotificationEntry["importance"],
-                                    )
-                                  }
-                                  disabled={notifSaving()}
-                                >
-                                  <option value="LOW">Low</option>
-                                  <option value="MEDIUM">Medium</option>
-                                  <option value="HIGH">High</option>
-                                  <option value="CRITICAL">Critical</option>
-                                </select>
+                          <div class="filterRow filterRow2">
+                            <div class="field" style="margin: 0">
+                              <label for="admin_notif_importance">Severity</label>
+                              <select
+                                id="admin_notif_importance"
+                                class="select"
+                                value={notifImportance()}
+                                onChange={(e) =>
+                                  setNotifImportance(
+                                    e.currentTarget.value as NotificationEntry["importance"],
+                                  )
+                                }
+                                disabled={notifSaving()}
+                              >
+                                <option value="LOW">Low</option>
+                                <option value="MEDIUM">Medium</option>
+                                <option value="HIGH">High</option>
+                                <option value="CRITICAL">Critical</option>
+                              </select>
+                            </div>
+                            <div class="field" style="margin: 0">
+                              <label for="admin_notif_publish">Publish Date</label>
+                              <DateTimePicker
+                                id="admin_notif_publish"
+                                value={notifPublishAt}
+                                onChange={setNotifPublishAt}
+                                minValue={minPublishLocal}
+                                disabled={notifSaving()}
+                              />
+                            </div>
+                          </div>
+
+                          <div class="field">
+                            <label style="display: flex; gap: 12px; align-items: center">
+                              <input
+                                type="checkbox"
+                                checked={notifIsWelcome()}
+                                onChange={() => setNotifIsWelcome((v) => !v)}
+                                disabled={notifSaving()}
+                              />
+                              <span>Welcome message</span>
+                            </label>
+                          </div>
+
+                          <div class="field">
+                            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+                              <div style="color: rgba(255, 255, 255, 0.72); font-size: 13px; letter-spacing: 0.02em; text-transform: uppercase">
+                                Recipients
                               </div>
-                              <div class="field" style="margin: 0">
-                                <label for="admin_notif_publish">Publish Date</label>
-                                <DateTimePicker
-                                  id="admin_notif_publish"
-                                  value={notifPublishAt}
-                                  onChange={setNotifPublishAt}
-                                  minValue={minPublishLocal}
+                              <div style="display: flex; gap: 10px; flex-wrap: wrap">
+                                <button
+                                  class="btn"
+                                  type="button"
                                   disabled={notifSaving()}
-                                />
+                                  onClick={() => setRecipientsModalOpen(true)}
+                                >
+                                  Filters
+                                </button>
                               </div>
                             </div>
-
-                            <div class="field">
-                              <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
-                                <div style="color: rgba(255, 255, 255, 0.72); font-size: 13px; letter-spacing: 0.02em; text-transform: uppercase">
-                                  Recipients
+                            <Show
+                              when={
+                                notifRecipientUserIds().length ||
+                                notifRecipientOrganizationIds().length ||
+                                notifRecipientRoles().length
+                              }
+                            >
+                              <div style="display: grid; gap: 8px; margin-top: 10px">
+                                <div class="tagRow">
+                                  <For each={notifRecipientUserIds().slice(0, 6)}>
+                                    {(id) => (
+                                      <span class="tagPill">{userLabelById().get(id) ?? id}</span>
+                                    )}
+                                  </For>
+                                  <Show when={notifRecipientUserIds().length > 6}>
+                                    <span class="tagPill">
+                                      +{notifRecipientUserIds().length - 6}
+                                    </span>
+                                  </Show>
                                 </div>
-                                <div style="display: flex; gap: 10px; flex-wrap: wrap">
+                                <div class="tagRow">
+                                  <For each={notifRecipientOrganizationIds().slice(0, 6)}>
+                                    {(id) => (
+                                      <span class="tagPill">{orgLabelById().get(id) ?? id}</span>
+                                    )}
+                                  </For>
+                                  <Show when={notifRecipientOrganizationIds().length > 6}>
+                                    <span class="tagPill">
+                                      +{notifRecipientOrganizationIds().length - 6}
+                                    </span>
+                                  </Show>
+                                  <For each={notifRecipientRoles()}>
+                                    {(r) => <span class="tagPill">{r}</span>}
+                                  </For>
+                                </div>
+                                <div style="display: flex; justify-content: flex-end">
                                   <button
                                     class="btn"
                                     type="button"
                                     disabled={notifSaving()}
-                                    onClick={() => setRecipientsModalOpen(true)}
+                                    onClick={() => {
+                                      setNotifRecipientUserIds([]);
+                                      setNotifRecipientOrganizationIds([]);
+                                      setNotifRecipientRoles([]);
+                                      setRecipientsSearch("");
+                                      setRecipientOrgSearch("");
+                                    }}
                                   >
-                                    Filters
+                                    Clear
                                   </button>
                                 </div>
                               </div>
-                              <Show
-                                when={
-                                  notifRecipientUserIds().length ||
-                                  notifRecipientOrganizationIds().length ||
-                                  notifRecipientRoles().length
-                                }
-                              >
-                                <div style="display: grid; gap: 8px; margin-top: 10px">
-                                  <div class="tagRow">
-                                    <For each={notifRecipientUserIds().slice(0, 6)}>
-                                      {(id) => (
-                                        <span class="tagPill">{userLabelById().get(id) ?? id}</span>
-                                      )}
-                                    </For>
-                                    <Show when={notifRecipientUserIds().length > 6}>
-                                      <span class="tagPill">
-                                        +{notifRecipientUserIds().length - 6}
-                                      </span>
-                                    </Show>
-                                  </div>
-                                  <div class="tagRow">
-                                    <For each={notifRecipientOrganizationIds().slice(0, 6)}>
-                                      {(id) => (
-                                        <span class="tagPill">{orgLabelById().get(id) ?? id}</span>
-                                      )}
-                                    </For>
-                                    <Show when={notifRecipientOrganizationIds().length > 6}>
-                                      <span class="tagPill">
-                                        +{notifRecipientOrganizationIds().length - 6}
-                                      </span>
-                                    </Show>
-                                    <For each={notifRecipientRoles()}>
-                                      {(r) => <span class="tagPill">{r}</span>}
-                                    </For>
-                                  </div>
-                                  <div style="display: flex; justify-content: flex-end">
-                                    <button
-                                      class="btn"
-                                      type="button"
-                                      disabled={notifSaving()}
-                                      onClick={() => {
-                                        setNotifRecipientUserIds([]);
-                                        setNotifRecipientOrganizationIds([]);
-                                        setNotifRecipientRoles([]);
-                                        setRecipientsSearch("");
-                                        setRecipientOrgSearch("");
-                                      }}
-                                    >
-                                      Clear
-                                    </button>
-                                  </div>
-                                </div>
-                              </Show>
-                            </div>
-                          </Show>
+                            </Show>
+                          </div>
 
                           <div style="color: rgba(250,250,255,0.66); font-size: 12px; line-height: 1.45">
                             Placeholders: {"{{greeting}}"}, {"{{name}}"}, {"{{nameUpper}}"},{" "}
@@ -1236,6 +1156,9 @@ export default function Admin() {
                                           {e.title}
                                         </div>
                                         <div style="display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap">
+                                          {e.isWelcome ? (
+                                            <span class="statusPill statusPending">Welcome</span>
+                                          ) : null}
                                           <span class={severityPillClass()}>{severityText()}</span>
                                           <span class={pillClass()}>{pillText()}</span>
                                         </div>

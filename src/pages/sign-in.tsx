@@ -2,7 +2,7 @@ import { Modal } from "@/components/modal";
 import { Toast, type ToastState } from "@/components/toast";
 import { useAuth } from "@/state/auth";
 import { api } from "@/utils/api";
-import { A, useNavigate } from "@solidjs/router";
+import { useNavigate } from "@solidjs/router";
 import { Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
 
 export default function SignIn() {
@@ -65,7 +65,7 @@ export default function SignIn() {
       const code = err instanceof Error ? err.message : "SIGNIN_FAILED";
       const msg =
         code === "INVALID_INPUT" || code === "INVALID_CREDENTIALS"
-          ? "Wrong login or password."
+          ? "Wrong username/email or password."
           : code === "USER_NOT_FOUND"
             ? "User is not found in our system."
             : code === "EMAIL_NOT_VERIFIED"

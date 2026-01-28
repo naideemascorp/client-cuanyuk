@@ -695,7 +695,7 @@ export default function Dashboard(props: DashboardProps) {
   };
 
   const shareUrl = createMemo(() => auth.shareUrl());
-  const isSuper = createMemo(() => auth.me()?.role === "SUPER");
+  const _isSuper = createMemo(() => auth.me()?.role === "SUPER");
   const totalLinks = createMemo(() => items().filter((i) => i.kind === "LINK").length);
   const totalQris = createMemo(() => items().filter((i) => i.kind === "QRIS").length);
   const [layoutMode, setLayoutMode] = createSignal<"CATEGORY" | "MERCHANT" | "LINK" | "QRIS">(
@@ -912,13 +912,13 @@ export default function Dashboard(props: DashboardProps) {
                         stroke="currentColor"
                         stroke-width="2"
                       >
-                        <title>Log out</title>
+                        <title>Sign out</title>
                         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                         <path d="M16 17l5-5-5-5" />
                         <path d="M21 12H9" />
                       </svg>
                     ) : null}
-                    <span>{isAction("signout") ? "Signing Out…" : "Log Out"}</span>
+                    <span>{isAction("signout") ? "Signing out…" : "Sign Out"}</span>
                   </span>
                 </button>
 
@@ -1065,20 +1065,12 @@ export default function Dashboard(props: DashboardProps) {
                     <Show when={layoutMode() === "CATEGORY"}>
                       <For each={categoriesPaged()}>
                         {(cat) => (
-                          <div>
-                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px">
-                              <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(250,250,255,0.62)">
-                                {cat.category}
-                              </div>
+                          <div class="categoryBlock">
+                            <div class="categoryHeaderRow">
+                              <div class="categoryTitle">{cat.category}</div>
+                              <div class="categoryMeta">{cat.merchants.length} merchants</div>
                             </div>
-                            <div
-                              style={{
-                                display: "grid",
-                                "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))",
-                                gap: "12px",
-                                "margin-top": "10px",
-                              }}
-                            >
+                            <div class="categoryGrid">
                               <For
                                 each={cat.merchants.slice(
                                   0,
@@ -1094,49 +1086,48 @@ export default function Dashboard(props: DashboardProps) {
                                     };
                                   return (
                                     <button
-                                      class="card"
+                                      class="merchantCard"
                                       type="button"
-                                      style={{
-                                        cursor: "pointer",
-                                        padding: "0",
-                                        "text-align": "left",
-                                      }}
                                       onClick={() => {
                                         setSelectedMerchant(m);
                                         setTab("LINK");
                                       }}
                                     >
-                                      <div class="cardInner" style="display: grid; gap: 10px">
-                                        <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between">
-                                          <div style="display: inline-flex; gap: 10px; align-items: center; min-width: 0">
-                                            <img
-                                              src={m.pictureUrl ?? defaultMerchantImage(m.name)}
-                                              alt=""
-                                              style="width: 38px; height: 38px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.14); object-fit: cover; flex: 0 0 auto"
-                                              onError={(e) => {
-                                                const img = e.currentTarget;
-                                                if (img.dataset.fallback === "1") return;
-                                                img.dataset.fallback = "1";
-                                                img.src = defaultMerchantImage(m.name);
-                                              }}
-                                            />
-                                            <div style="font-weight: 700; letter-spacing: -0.01em; color: rgba(250,250,255,0.92); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-                                              {m.name}
+                                      <div class="merchantCardInner">
+                                        <div class="merchantCardTop">
+                                          <img
+                                            class="merchantAvatar"
+                                            src={m.pictureUrl ?? defaultMerchantImage(m.name)}
+                                            alt=""
+                                            onError={(e) => {
+                                              const img = e.currentTarget;
+                                              if (img.dataset.fallback === "1") return;
+                                              img.dataset.fallback = "1";
+                                              img.src = defaultMerchantImage(m.name);
+                                            }}
+                                          />
+                                          <div class="merchantMeta">
+                                            <div class="merchantName">{m.name}</div>
+                                            <div class="merchantTagRow">
+                                              <span class="merchantTag">{m.category}</span>
+                                              {sum().active > 0 ? (
+                                                <span class="merchantTag merchantTagActive">
+                                                  Active {sum().active}
+                                                </span>
+                                              ) : null}
                                             </div>
                                           </div>
+                                          <div class="merchantChevron">›</div>
                                         </div>
-                                        <div style="font-size: 13px; color: rgba(250,250,255,0.78); line-height: 1.4">
-                                          <span class="countRow">
-                                            <span class="countPill">
-                                              <span class="countPillLabel">Links</span>
-                                              <span class="countPillValue">{sum().links}</span>
-                                            </span>
-                                            <span class="countDot">•</span>
-                                            <span class="countPill">
-                                              <span class="countPillLabel">QRIS</span>
-                                              <span class="countPillValue">{sum().qris}</span>
-                                            </span>
-                                          </span>
+                                        <div class="merchantStats">
+                                          <div class="merchantStat">
+                                            <div class="merchantStatLabel">Links</div>
+                                            <div class="merchantStatValue">{sum().links}</div>
+                                          </div>
+                                          <div class="merchantStat">
+                                            <div class="merchantStatLabel">QRIS</div>
+                                            <div class="merchantStatValue">{sum().qris}</div>
+                                          </div>
                                         </div>
                                       </div>
                                     </button>
@@ -1145,7 +1136,7 @@ export default function Dashboard(props: DashboardProps) {
                               </For>
                             </div>
                             <Show when={cat.merchants.length > visibleMerchantsCount(cat.category)}>
-                              <div style="margin-top: 10px">
+                              <div style="margin-top: 12px">
                                 <button
                                   class="btn"
                                   type="button"
@@ -1198,45 +1189,48 @@ export default function Dashboard(props: DashboardProps) {
                               summaryByMerchant().get(m.id) ?? { links: 0, qris: 0, active: 0 };
                             return (
                               <button
-                                class="card"
+                                class="merchantCard"
                                 type="button"
-                                style={{ cursor: "pointer", padding: "0", "text-align": "left" }}
                                 onClick={() => {
                                   setSelectedMerchant(m);
                                   setTab("LINK");
                                 }}
                               >
-                                <div class="cardInner" style="display: grid; gap: 10px">
-                                  <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between">
-                                    <div style="display: inline-flex; gap: 10px; align-items: center; min-width: 0">
-                                      <img
-                                        src={m.pictureUrl ?? defaultMerchantImage(m.name)}
-                                        alt=""
-                                        style="width: 38px; height: 38px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.14); object-fit: cover; flex: 0 0 auto"
-                                        onError={(e) => {
-                                          const img = e.currentTarget;
-                                          if (img.dataset.fallback === "1") return;
-                                          img.dataset.fallback = "1";
-                                          img.src = defaultMerchantImage(m.name);
-                                        }}
-                                      />
-                                      <div style="font-weight: 700; letter-spacing: -0.01em; color: rgba(250,250,255,0.92); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-                                        {m.name}
+                                <div class="merchantCardInner">
+                                  <div class="merchantCardTop">
+                                    <img
+                                      class="merchantAvatar"
+                                      src={m.pictureUrl ?? defaultMerchantImage(m.name)}
+                                      alt=""
+                                      onError={(e) => {
+                                        const img = e.currentTarget;
+                                        if (img.dataset.fallback === "1") return;
+                                        img.dataset.fallback = "1";
+                                        img.src = defaultMerchantImage(m.name);
+                                      }}
+                                    />
+                                    <div class="merchantMeta">
+                                      <div class="merchantName">{m.name}</div>
+                                      <div class="merchantTagRow">
+                                        <span class="merchantTag">{m.category}</span>
+                                        {sum().active > 0 ? (
+                                          <span class="merchantTag merchantTagActive">
+                                            Active {sum().active}
+                                          </span>
+                                        ) : null}
                                       </div>
                                     </div>
+                                    <div class="merchantChevron">›</div>
                                   </div>
-                                  <div style="font-size: 13px; color: rgba(250,250,255,0.78); line-height: 1.4">
-                                    <span class="countRow">
-                                      <span class="countPill">
-                                        <span class="countPillLabel">Links</span>
-                                        <span class="countPillValue">{sum().links}</span>
-                                      </span>
-                                      <span class="countDot">•</span>
-                                      <span class="countPill">
-                                        <span class="countPillLabel">QRIS</span>
-                                        <span class="countPillValue">{sum().qris}</span>
-                                      </span>
-                                    </span>
+                                  <div class="merchantStats">
+                                    <div class="merchantStat">
+                                      <div class="merchantStatLabel">Links</div>
+                                      <div class="merchantStatValue">{sum().links}</div>
+                                    </div>
+                                    <div class="merchantStat">
+                                      <div class="merchantStatLabel">QRIS</div>
+                                      <div class="merchantStatValue">{sum().qris}</div>
+                                    </div>
                                   </div>
                                 </div>
                               </button>

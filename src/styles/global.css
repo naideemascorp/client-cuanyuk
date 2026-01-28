@@ -13,7 +13,8 @@
   --radius-lg: 18px;
   --radius-md: 12px;
   --radius-sm: 10px;
-  --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+  --font:
+    ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
     "Apple Color Emoji", "Segoe UI Emoji";
 }
 
@@ -42,7 +43,8 @@ body {
   margin: 0;
   font-family: var(--font);
   color: var(--ink);
-  background: radial-gradient(1200px 800px at 20% 10%, rgba(157, 124, 255, 0.26), transparent 55%),
+  background:
+    radial-gradient(1200px 800px at 20% 10%, rgba(157, 124, 255, 0.26), transparent 55%),
     radial-gradient(900px 700px at 85% 25%, rgba(124, 255, 214, 0.2), transparent 58%),
     radial-gradient(900px 700px at 55% 95%, rgba(255, 124, 207, 0.14), transparent 60%),
     linear-gradient(180deg, var(--bg0), var(--bg1));
@@ -156,7 +158,8 @@ input {
   inset: -120px -120px auto auto;
   width: 260px;
   height: 260px;
-  background: radial-gradient(circle at 30% 35%, rgba(124, 255, 214, 0.38), transparent 65%),
+  background:
+    radial-gradient(circle at 30% 35%, rgba(124, 255, 214, 0.38), transparent 65%),
     radial-gradient(circle at 70% 70%, rgba(157, 124, 255, 0.34), transparent 60%);
   filter: blur(8px);
   opacity: 0.65;
@@ -167,6 +170,163 @@ input {
   padding: 18px 16px;
 }
 
+.categoryBlock {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(18, 24, 40, 0.78), rgba(10, 12, 18, 0.48));
+  padding: 14px;
+}
+
+.categoryHeaderRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.categoryTitle {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: rgba(250, 250, 255, 0.9);
+}
+
+.categoryMeta {
+  font-size: 12px;
+  color: rgba(250, 250, 255, 0.6);
+}
+
+.categoryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.merchantCard {
+  appearance: none;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(14, 18, 28, 0.92), rgba(10, 12, 18, 0.52));
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.merchantCard:hover {
+  transform: translateY(-1px);
+  border-color: rgba(124, 255, 214, 0.26);
+  background: linear-gradient(180deg, rgba(16, 22, 34, 0.96), rgba(10, 12, 18, 0.56));
+}
+
+.merchantCard:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(124, 255, 214, 0.28);
+}
+
+.merchantCardInner {
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.merchantCardTop {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.merchantAvatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+
+.merchantMeta {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 6px;
+}
+
+.merchantName {
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  color: rgba(250, 250, 255, 0.92);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merchantTagRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.merchantTag {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(250, 250, 255, 0.72);
+}
+
+.merchantTagActive {
+  border-color: rgba(124, 255, 214, 0.28);
+  background: rgba(124, 255, 214, 0.08);
+  color: rgba(124, 255, 214, 0.92);
+}
+
+.merchantChevron {
+  flex: 0 0 auto;
+  color: rgba(250, 250, 255, 0.45);
+  font-size: 22px;
+  line-height: 1;
+  padding-left: 6px;
+}
+
+.merchantStats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.merchantStat {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  padding: 10px 10px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.merchantStatLabel {
+  font-size: 12px;
+  color: rgba(250, 250, 255, 0.58);
+}
+
+.merchantStatValue {
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  color: rgba(250, 250, 255, 0.9);
+}
+
 .btn {
   appearance: none;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -175,7 +335,10 @@ input {
   padding: 11px 14px;
   border-radius: 14px;
   cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .btn:hover {
@@ -199,7 +362,8 @@ input {
 
 .btnHero {
   border-color: rgba(255, 255, 255, 0.2);
-  background: radial-gradient(circle at 15% 20%, rgba(255, 124, 207, 0.22), transparent 55%),
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255, 124, 207, 0.22), transparent 55%),
     radial-gradient(circle at 85% 30%, rgba(124, 255, 214, 0.16), transparent 55%),
     linear-gradient(135deg, rgba(157, 124, 255, 0.22), rgba(255, 255, 255, 0.04));
   box-shadow: 0 16px 44px rgba(0, 0, 0, 0.35);
@@ -209,7 +373,8 @@ input {
 
 .btnHero:hover {
   border-color: rgba(255, 124, 207, 0.34);
-  background: radial-gradient(circle at 15% 20%, rgba(255, 124, 207, 0.28), transparent 58%),
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255, 124, 207, 0.28), transparent 58%),
     radial-gradient(circle at 85% 30%, rgba(124, 255, 214, 0.2), transparent 58%),
     linear-gradient(135deg, rgba(157, 124, 255, 0.26), rgba(255, 255, 255, 0.06));
 }
@@ -244,7 +409,8 @@ input {
 .needAccessBox {
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.16);
-  background: radial-gradient(circle at 20% 18%, rgba(255, 124, 207, 0.18), transparent 62%),
+  background:
+    radial-gradient(circle at 20% 18%, rgba(255, 124, 207, 0.18), transparent 62%),
     radial-gradient(circle at 82% 26%, rgba(124, 255, 214, 0.14), transparent 62%),
     radial-gradient(circle at 50% 110%, rgba(157, 124, 255, 0.16), transparent 62%),
     linear-gradient(180deg, rgba(22, 30, 52, 0.78), rgba(12, 14, 22, 0.62));
@@ -366,7 +532,8 @@ input {
 .eyeBtn {
   appearance: none;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  background: radial-gradient(circle at 20% 20%, rgba(255, 124, 207, 0.14), transparent 58%),
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 124, 207, 0.14), transparent 58%),
     radial-gradient(circle at 80% 30%, rgba(124, 255, 214, 0.12), transparent 58%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.06));
   color: rgba(250, 250, 255, 0.86);
@@ -377,7 +544,10 @@ input {
   display: grid;
   place-items: center;
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
   flex: 0 0 auto;
 }
 
@@ -412,7 +582,10 @@ input {
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
   display: grid;
   place-items: center;
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .rememberBox::after {
@@ -429,7 +602,8 @@ input {
 
 .rememberInput:checked + .rememberBox {
   border-color: rgba(124, 255, 214, 0.38);
-  background: radial-gradient(circle at 20% 20%, rgba(124, 255, 214, 0.22), transparent 55%),
+  background:
+    radial-gradient(circle at 20% 20%, rgba(124, 255, 214, 0.22), transparent 55%),
     radial-gradient(circle at 80% 30%, rgba(157, 124, 255, 0.18), transparent 55%),
     linear-gradient(135deg, rgba(157, 124, 255, 0.18), rgba(255, 255, 255, 0.06));
 }
@@ -469,7 +643,8 @@ input {
   display: grid;
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.18);
-  background: radial-gradient(circle at 15% 20%, rgba(255, 124, 207, 0.22), transparent 58%),
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255, 124, 207, 0.22), transparent 58%),
     radial-gradient(circle at 85% 30%, rgba(124, 255, 214, 0.16), transparent 58%),
     linear-gradient(135deg, rgba(157, 124, 255, 0.22), rgba(255, 255, 255, 0.04));
   font-weight: 900;
@@ -503,7 +678,8 @@ input {
   height: 92px;
   border-radius: 26px;
   border: 1px solid rgba(255, 255, 255, 0.18);
-  background: radial-gradient(circle at 15% 20%, rgba(255, 124, 207, 0.24), transparent 58%),
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255, 124, 207, 0.24), transparent 58%),
     radial-gradient(circle at 85% 30%, rgba(124, 255, 214, 0.18), transparent 58%),
     linear-gradient(135deg, rgba(157, 124, 255, 0.24), rgba(255, 255, 255, 0.05));
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
@@ -583,7 +759,10 @@ input {
   place-items: center;
   cursor: pointer;
   position: relative;
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .iconBtn:hover {
@@ -621,7 +800,8 @@ input {
   width: min(420px, calc(100vw - 24px));
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  background: radial-gradient(circle at 10% 15%, rgba(255, 124, 207, 0.14), transparent 56%),
+  background:
+    radial-gradient(circle at 10% 15%, rgba(255, 124, 207, 0.14), transparent 56%),
     radial-gradient(circle at 88% 25%, rgba(124, 255, 214, 0.14), transparent 56%),
     linear-gradient(180deg, rgba(22, 30, 52, 0.92), rgba(12, 14, 22, 0.86));
   box-shadow: 0 26px 80px rgba(0, 0, 0, 0.65);
@@ -681,7 +861,8 @@ input {
 }
 
 .notifItem--unread {
-  background: radial-gradient(circle at 10% 15%, rgba(124, 255, 214, 0.12), transparent 58%),
+  background:
+    radial-gradient(circle at 10% 15%, rgba(124, 255, 214, 0.12), transparent 58%),
     rgba(255, 255, 255, 0.03);
   box-shadow: inset 0 0 0 1px rgba(124, 255, 214, 0.18);
 }
@@ -774,7 +955,8 @@ input {
   z-index: 60;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  background: radial-gradient(circle at 10% 15%, rgba(157, 124, 255, 0.12), transparent 56%),
+  background:
+    radial-gradient(circle at 10% 15%, rgba(157, 124, 255, 0.12), transparent 56%),
     radial-gradient(circle at 88% 25%, rgba(124, 255, 214, 0.12), transparent 56%),
     linear-gradient(180deg, rgba(22, 30, 52, 0.92), rgba(12, 14, 22, 0.9));
   box-shadow: 0 26px 80px rgba(0, 0, 0, 0.65);
@@ -972,8 +1154,11 @@ input {
   place-items: center;
   color: rgba(250, 250, 255, 0.82);
   cursor: pointer;
-  transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease, opacity 0.14s
-    ease;
+  transition:
+    transform 0.14s ease,
+    border-color 0.14s ease,
+    background 0.14s ease,
+    opacity 0.14s ease;
 }
 
 .inputIconBtn:hover {
@@ -1017,11 +1202,18 @@ input {
   color: var(--ink);
   outline: none;
   appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, rgba(250, 250, 255, 0.7) 50%),
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(250, 250, 255, 0.7) 50%),
     linear-gradient(135deg, rgba(250, 250, 255, 0.7) 50%, transparent 50%),
     radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.18) 1px, transparent 1px);
-  background-position: calc(100% - 22px) 18px, calc(100% - 16px) 18px, calc(100% - 28px) 50%;
-  background-size: 6px 6px, 6px 6px, 26px 26px;
+  background-position:
+    calc(100% - 22px) 18px,
+    calc(100% - 16px) 18px,
+    calc(100% - 28px) 50%;
+  background-size:
+    6px 6px,
+    6px 6px,
+    26px 26px;
   background-repeat: no-repeat;
 }
 
@@ -1264,7 +1456,11 @@ input {
   background: transparent;
   color: rgba(250, 250, 255, 0.72);
   cursor: pointer;
-  transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease, color 0.14s ease;
+  transition:
+    transform 0.14s ease,
+    border-color 0.14s ease,
+    background 0.14s ease,
+    color 0.14s ease;
 }
 
 .segBtn:hover {
@@ -1305,7 +1501,8 @@ input {
   padding: 12px 12px 12px 14px;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.18);
-  background: radial-gradient(circle at 12% 25%, rgba(255, 124, 207, 0.18), transparent 58%),
+  background:
+    radial-gradient(circle at 12% 25%, rgba(255, 124, 207, 0.18), transparent 58%),
     radial-gradient(circle at 88% 35%, rgba(124, 255, 214, 0.16), transparent 58%),
     linear-gradient(180deg, rgba(22, 30, 52, 0.9), rgba(12, 14, 22, 0.76));
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
@@ -1500,11 +1697,15 @@ input {
   padding: 0;
   border-radius: 18px;
   border: 1px dashed rgba(255, 255, 255, 0.22);
-  background: radial-gradient(circle at 20% 10%, rgba(255, 124, 207, 0.14), transparent 55%),
+  background:
+    radial-gradient(circle at 20% 10%, rgba(255, 124, 207, 0.14), transparent 55%),
     radial-gradient(circle at 85% 25%, rgba(124, 255, 214, 0.12), transparent 55%),
     linear-gradient(180deg, rgba(22, 30, 52, 0.62), rgba(12, 14, 22, 0.42));
   cursor: pointer;
-  transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+  transition:
+    transform 0.14s ease,
+    border-color 0.14s ease,
+    background 0.14s ease;
 }
 
 .dropzone:hover {
@@ -1514,7 +1715,8 @@ input {
 
 .dropzoneActive {
   border-color: rgba(124, 255, 214, 0.48);
-  background: radial-gradient(circle at 20% 10%, rgba(255, 124, 207, 0.16), transparent 55%),
+  background:
+    radial-gradient(circle at 20% 10%, rgba(255, 124, 207, 0.16), transparent 55%),
     radial-gradient(circle at 85% 25%, rgba(124, 255, 214, 0.14), transparent 55%),
     linear-gradient(180deg, rgba(22, 30, 52, 0.74), rgba(12, 14, 22, 0.52));
 }
@@ -1731,7 +1933,8 @@ input {
   width: min(1100px, 100%);
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.16);
-  background: radial-gradient(circle at 12% 30%, rgba(255, 124, 207, 0.18), transparent 55%),
+  background:
+    radial-gradient(circle at 12% 30%, rgba(255, 124, 207, 0.18), transparent 55%),
     radial-gradient(circle at 82% 18%, rgba(124, 255, 214, 0.14), transparent 55%),
     radial-gradient(circle at 55% 110%, rgba(157, 124, 255, 0.16), transparent 60%),
     linear-gradient(180deg, rgba(22, 30, 52, 0.66), rgba(10, 12, 20, 0.62));

@@ -235,6 +235,10 @@ export function DateTimePicker(props: {
         inputmode="numeric"
         value={text()}
         placeholder="YYYY-MM-DD HH:mm"
+        onClick={() => {
+          if (open() || props.disabled) return;
+          openPicker();
+        }}
         onFocus={() => setEditing(true)}
         onBlur={() => {
           setEditing(false);

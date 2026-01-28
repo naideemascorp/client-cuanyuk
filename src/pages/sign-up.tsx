@@ -71,7 +71,7 @@ export default function SignUp() {
         setBusy(false);
         return;
       }
-      setStatus("Check your email for a verification link. Login is disabled until verified.");
+      setStatus("Check your email for a verification link. Sign in is disabled until verified.");
       localStorage.removeItem("signup.username");
       localStorage.removeItem("signup.email");
       setBusy(false);
@@ -120,7 +120,8 @@ export default function SignUp() {
           <div class="title">
             <h1>Sign Up</h1>
             <p>
-              Access is restricted by device allow-list. If you reached this page, your device is allowed.
+              Access is restricted by device allow-list. If you reached this page, your device is
+              allowed.
             </p>
           </div>
 
@@ -207,7 +208,7 @@ export default function SignUp() {
                   <div style="font-weight: 600; letter-spacing: -0.01em">Verification</div>
                   <div style="color: rgba(250,250,255,0.68); line-height: 1.5; font-size: 14px">
                     A verification link is emailed to you and expires in about 1 day. Until
-                    verified, login is blocked.
+                    verified, sign in is blocked.
                   </div>
                   <div style="height: 1px; background: rgba(255,255,255,0.12)" />
                   <div style="color: rgba(250,250,255,0.68); line-height: 1.5; font-size: 14px">
