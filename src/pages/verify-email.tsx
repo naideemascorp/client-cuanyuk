@@ -18,14 +18,9 @@ export default function VerifyEmail() {
     void (async () => {
       setStatus("working");
       try {
-        const res = await api.get<{ ok: boolean; code?: string; alreadyVerified?: boolean }>(
+        const res = await api.get<{ alreadyVerified?: boolean }>(
           `/auth/verify-email?token=${encodeURIComponent(token)}`,
         );
-        if (!res.ok) {
-          setStatus("bad");
-          setDetail(res.code ?? "VERIFY_FAILED");
-          return;
-        }
         setStatus("ok");
         setDetail(
           res.alreadyVerified ? "Already verified. You can sign in." : "Verified. You can sign in.",

@@ -1,7 +1,7 @@
 import { Modal } from "@/components/modal";
 import { Toast, type ToastState } from "@/components/toast";
 import { useAuth } from "@/state/auth";
-import { api } from "@/utils/api";
+import { ApiRequestError, api } from "@/utils/api";
 import { useNavigate } from "@solidjs/router";
 import { Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
 
@@ -115,6 +115,8 @@ export default function SignIn() {
   };
 
   const requestReset = async () => {
+    const isRecord = (v: unknown): v is Record<string, unknown> =>
+      Boolean(v) && typeof v === "object" && !Array.isArray(v);
     const e = resetEmail().trim();
     if (!e) {
       setToast({
@@ -127,32 +129,10 @@ export default function SignIn() {
     }
     setResetBusy(true);
     try {
-      const res = await api.post<{
-        ok: boolean;
-        code?: string;
-        nextAllowedAt?: string;
-        remainingToday?: number;
-        retryAt?: string;
-      }>("/auth/password-reset/request", { identifier: e });
-      if (!res.ok) {
-        if (res.code === "USER_NOT_FOUND") {
-          setToast({ id: Date.now(), kind: "error", message: "User not found in the system." });
-          toastTimer = globalThis.setTimeout(() => setToast(null), 5000);
-          return;
-        }
-        if (res.code === "RESEND_COOLDOWN" && res.nextAllowedAt) {
-          setResetNextAllowedAt(new Date(res.nextAllowedAt).getTime());
-          return;
-        }
-        if (res.code === "RESEND_LIMIT" && res.retryAt) {
-          setResetRetryAt(new Date(res.retryAt).getTime());
-          setResetRemainingToday(0);
-          return;
-        }
-        setToast({ id: Date.now(), kind: "error", message: res.code ?? "RESET_REQUEST_FAILED" });
-        toastTimer = globalThis.setTimeout(() => setToast(null), 5000);
-        return;
-      }
+      const res = await api.post<{ nextAllowedAt?: string; remainingToday?: number }>(
+        "/auth/password-reset/request",
+        { identifier: e },
+      );
       setResetSent(true);
       setResetSuccessCount((n) => {
         const next = n + 1;
@@ -171,10 +151,26 @@ export default function SignIn() {
       });
       toastTimer = globalThis.setTimeout(() => setToast(null), 5000);
     } catch (err) {
+      const code = err instanceof Error ? err.message : "RESET_REQUEST_FAILED";
+      const data = err instanceof ApiRequestError ? err.data : null;
+      if (code === "USER_NOT_FOUND") {
+        setToast({ id: Date.now(), kind: "error", message: "User not found in the system." });
+        toastTimer = globalThis.setTimeout(() => setToast(null), 5000);
+        return;
+      }
+      if (code === "RESEND_COOLDOWN" && isRecord(data) && typeof data.nextAllowedAt === "string") {
+        setResetNextAllowedAt(new Date(data.nextAllowedAt).getTime());
+        return;
+      }
+      if (code === "RESEND_LIMIT" && isRecord(data) && typeof data.retryAt === "string") {
+        setResetRetryAt(new Date(data.retryAt).getTime());
+        setResetRemainingToday(0);
+        return;
+      }
       setToast({
         id: Date.now(),
         kind: "error",
-        message: err instanceof Error ? err.message : "RESET_REQUEST_FAILED",
+        message: code,
       });
       toastTimer = globalThis.setTimeout(() => setToast(null), 5000);
     } finally {

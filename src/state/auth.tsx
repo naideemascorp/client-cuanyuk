@@ -36,20 +36,16 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
       hadToken = Boolean(localStorage.getItem("auth_token"));
     } catch {}
     try {
-      const res = await api.get<{ ok: boolean; user?: User; shareUrl?: string }>("/auth/me");
-      if (!res.ok) {
-        setMe(null);
-        setShareUrl(null);
-        if (hadToken) {
-          try {
-            localStorage.removeItem("auth_token");
-          } catch {}
-          toast.showToast("error", "Session expired. Please sign in again.");
-        }
-        return;
-      }
-      setMe(res.user ?? null);
+      const res = await api.get<{ user?: User; shareUrl?: string }>("/auth/me");
+      const nextUser = res.user ?? null;
+      setMe(nextUser);
       setShareUrl(res.shareUrl ?? null);
+      if (!nextUser && hadToken) {
+        try {
+          localStorage.removeItem("auth_token");
+        } catch {}
+        toast.showToast("error", "Session expired. Please sign in again.");
+      }
     } catch {
       setMe(null);
       setShareUrl(null);
@@ -119,19 +115,16 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
   const signIn = async (identifier: string, password: string) => {
     setLoading(true);
     try {
-      const res = await api.post<{ ok: boolean; token?: string; user?: User; code?: string }>(
-        "/auth/signin",
-        {
-          identifier,
-          password,
-        },
-      );
-      if (!res.ok) throw new Error(res.code ?? "SIGNIN_FAILED");
+      const res = await api.post<{ token?: string; user?: User }>("/auth/signin", {
+        identifier,
+        password,
+      });
       if (res.token) {
         try {
           localStorage.setItem("auth_token", res.token);
         } catch {}
       }
+      if (!res.token) throw new Error("SIGNIN_FAILED");
       await fetchMe();
       toast.showToast("success", "Signed in.");
       navigate("/", { replace: true });

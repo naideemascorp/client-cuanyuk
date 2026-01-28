@@ -210,7 +210,7 @@ export default function Admin() {
   const refreshIps = async () => {
     setIpLoading(true);
     try {
-      const res = await api.get<{ entries: IpEntry[] }>("/admin/devices");
+      const res = await api.get<{ entries: IpEntry[] }>("/api/admin/devices");
       setIpEntries(res.entries ?? []);
     } catch (e) {
       showToast("error", e instanceof Error ? e.message : "LOAD_FAILED");
@@ -222,7 +222,7 @@ export default function Admin() {
   const refreshUsers = async () => {
     setUserLoading(true);
     try {
-      const res = await api.get<{ users: UserEntry[] }>("/admin/users");
+      const res = await api.get<{ users: UserEntry[] }>("/api/admin/users");
       setUsers(res.users ?? []);
     } catch (e) {
       showToast("error", e instanceof Error ? e.message : "LOAD_FAILED");
@@ -234,7 +234,7 @@ export default function Admin() {
   const refreshNotifications = async () => {
     setNotifLoading(true);
     try {
-      const res = await api.get<{ entries: NotificationEntry[] }>("/admin/notifications");
+      const res = await api.get<{ entries: NotificationEntry[] }>("/api/admin/notifications");
       setNotifications(res.entries ?? []);
     } catch (e) {
       showToast("error", e instanceof Error ? e.message : "LOAD_FAILED");
@@ -246,7 +246,7 @@ export default function Admin() {
   const refreshOrganizations = async () => {
     setOrgLoading(true);
     try {
-      const res = await api.get<{ organizations: OrganizationEntry[] }>("/admin/organizations");
+      const res = await api.get<{ organizations: OrganizationEntry[] }>("/api/admin/organizations");
       setOrganizations(res.organizations ?? []);
     } catch (e) {
       showToast("error", e instanceof Error ? e.message : "LOAD_FAILED");
@@ -295,7 +295,7 @@ export default function Admin() {
     showToast("progress", "Submitting…");
     try {
       const nextStatus = e.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
-      await api.post("/admin/notifications", {
+      await api.post("/api/admin/notifications", {
         id: e.id,
         title: e.title,
         description: e.description,
@@ -321,7 +321,7 @@ export default function Admin() {
     setIpToggleId(ipEntry.id);
     showToast("progress", "Submitting…");
     try {
-      await api.post("/admin/devices", {
+      await api.post("/api/admin/devices", {
         ip: ipEntry.ip,
         status: nextStatus,
         note: ipEntry.note ?? undefined,
@@ -360,7 +360,7 @@ export default function Admin() {
     setIpSaving(true);
     showToast("progress", "Submitting…");
     try {
-      await api.post("/admin/devices", {
+      await api.post("/api/admin/devices", {
         ip: ipVal,
         status: ipStatus(),
         note: ipNote().trim() || undefined,
@@ -404,7 +404,7 @@ export default function Admin() {
     setUserSaving(true);
     showToast("progress", "Submitting…");
     try {
-      await api.post(`/admin/users/${encodeURIComponent(id)}`, {
+      await api.post(`/api/admin/users/${encodeURIComponent(id)}`, {
         username,
         email,
         role: editRole(),
@@ -424,7 +424,7 @@ export default function Admin() {
     setUserSaving(true);
     showToast("progress", "Submitting…");
     try {
-      await api.post(`/admin/users/${encodeURIComponent(u.id)}`, {
+      await api.post(`/api/admin/users/${encodeURIComponent(u.id)}`, {
         username: u.username,
         email: u.email,
         role: u.role,
@@ -488,7 +488,7 @@ export default function Admin() {
     setNotifSaving(true);
     showToast("progress", "Submitting…");
     try {
-      await api.post("/admin/notifications", {
+      await api.post("/api/admin/notifications", {
         id: editingNotifId() ?? undefined,
         title,
         description,

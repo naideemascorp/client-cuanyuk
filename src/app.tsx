@@ -1,7 +1,9 @@
 import { Footer } from "@/components/footer";
+import { Header } from "@/components/header";
 import { ToastHost } from "@/components/toast-host";
 import { AuthProvider } from "@/state/auth";
 import { NotificationsProvider } from "@/state/notifications";
+import { ThemeProvider } from "@/state/theme";
 import { ToastProvider } from "@/state/toast";
 import { Route, Router, useLocation, useNavigate } from "@solidjs/router";
 import { createEffect, lazy } from "solid-js";
@@ -32,18 +34,21 @@ const RedirectShim = () => {
 export const App = () => (
   <Router
     root={(props) => (
-      <ToastProvider>
-        <AuthProvider>
-          <NotificationsProvider>
-            <div class="appRoot">
-              <RedirectShim />
-              <div class="appMain">{props.children}</div>
-              <Footer />
-              <ToastHost />
-            </div>
-          </NotificationsProvider>
-        </AuthProvider>
-      </ToastProvider>
+      <ThemeProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <NotificationsProvider>
+              <div class="appRoot">
+                <RedirectShim />
+                <Header />
+                <div class="appMain">{props.children}</div>
+                <Footer />
+                <ToastHost />
+              </div>
+            </NotificationsProvider>
+          </AuthProvider>
+        </ToastProvider>
+      </ThemeProvider>
     )}
   >
     <Route path="/" component={Dashboard} />

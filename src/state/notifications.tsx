@@ -85,7 +85,7 @@ export function NotificationsProvider(props: { children: JSX.Element }) {
 
   const markRead = async () => {
     if (!isReady()) return;
-    await api.post<{ ok: boolean }>("/notifications/read", {});
+    await api.post<Record<string, never>>("/notifications/read", {});
     await refresh();
   };
 

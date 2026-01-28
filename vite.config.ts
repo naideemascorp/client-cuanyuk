@@ -41,7 +41,7 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         "/auth": { target: apiBase, changeOrigin: true, secure: true },
-        "/admin": { target: apiBase, changeOrigin: true, secure: true },
+        "/cash": { target: apiBase, changeOrigin: true, secure: true },
         "/categories": { target: apiBase, changeOrigin: true, secure: true },
         "/merchants": { target: apiBase, changeOrigin: true, secure: true },
         "/notifications": { target: apiBase, changeOrigin: true, secure: true },
@@ -50,6 +50,7 @@ export default defineConfig(({ mode }) => {
         "/docs": { target: apiBase, changeOrigin: true, secure: true },
         "/assets": { target: apiBase, changeOrigin: true, secure: true },
         "/health": { target: apiBase, changeOrigin: true, secure: true },
+        "/api": { target: apiBase, changeOrigin: true, secure: true },
         ...(wsProxy ? { "/ws": wsProxy } : {}),
       },
       hmr: host

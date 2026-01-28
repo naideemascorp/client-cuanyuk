@@ -67,23 +67,21 @@ export default function ResetPassword() {
     setBusy(true);
     showToast("progress", "Resetting password…");
     try {
-      const res = await api.post<{ ok: boolean; code?: string }>("/auth/password-reset/confirm", {
+      await api.post<Record<string, never>>("/auth/password-reset/confirm", {
         token: token(),
         newPassword: p1,
       });
-      if (!res.ok) {
-        const code = res.code ?? "RESET_FAILED";
-        const msg =
-          code === "TOKEN_EXPIRED"
-            ? "Reset link expired. Request a new one."
-            : "Reset link is invalid.";
-        showToast("error", msg);
-        return;
-      }
       showToast("success", "Password updated. Please sign in.");
       globalThis.setTimeout(() => navigate("/sign-in", { replace: true }), 700);
     } catch (err) {
-      showToast("error", err instanceof Error ? err.message : "RESET_FAILED");
+      const code = err instanceof Error ? err.message : "RESET_FAILED";
+      const msg =
+        code === "TOKEN_EXPIRED"
+          ? "Reset link expired. Request a new one."
+          : code === "TOKEN_INVALID"
+            ? "Reset link is invalid."
+            : code;
+      showToast("error", msg);
     } finally {
       setBusy(false);
     }

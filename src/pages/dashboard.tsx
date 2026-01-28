@@ -1,3 +1,4 @@
+import { DateTimePicker } from "@/components/date-time-picker";
 import { ImageDropzone } from "@/components/image-dropzone";
 import { Modal } from "@/components/modal";
 import { NotificationBell } from "@/components/notification-bell";
@@ -6,7 +7,7 @@ import { useAuth } from "@/state/auth";
 import { useToast } from "@/state/toast";
 import { api } from "@/utils/api";
 import { type RouteSectionProps, useNavigate } from "@solidjs/router";
-import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 
 type Merchant = { id: string; name: string; category: string; pictureUrl: string | null };
 type PaymentItem = {
@@ -20,6 +21,66 @@ type PaymentItem = {
   createdDate: string;
   merchant: { id: string; name: string; category: string };
 };
+
+type Partner = { id: string; name: string };
+
+type CashTransactionEntry = {
+  id: string;
+  status: "ACTIVE" | "INACTIVE" | "PENDING" | "DELETED";
+  cashType: "CASH_IN" | "CASH_OUT";
+  transactionDate: string;
+  orderNumber: string;
+  totalAmount: number;
+  myFeeBps: number;
+  customerFeeBps: number;
+  merchantFeeBps: number;
+  grossProfit: number;
+  myFeeAmount: number;
+  customerFeeAmount: number;
+  merchantFeeAmount: number;
+  grossFeeAmount: number;
+  netProfit: number;
+  customerTotalAmount: number;
+  receiveFromMerchantAmount: number;
+  payToCustomerAmount: number;
+  merchant: { id: string; name: string };
+  partner: { id: string; name: string };
+};
+
+type CashSummaryRow = {
+  bucket: string;
+  netProfit: number;
+  grossProfit: number;
+  cashIn: number;
+  cashOut: number;
+  pendingFunds: number;
+};
+
+function Sparkline(props: { values: number[]; stroke: string; fill: string }) {
+  const values = props.values.slice(-24);
+  const n = values.length;
+  if (n < 2) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = Math.max(1, max - min);
+  const w = 120;
+  const h = 34;
+  const points = values.map((v, i) => {
+    const x = (i / (n - 1)) * w;
+    const y = h - ((v - min) / range) * (h - 2) - 1;
+    return { x, y };
+  });
+  const lineD = points
+    .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(2)},${p.y.toFixed(2)}`)
+    .join(" ");
+  const areaD = `M0,${h} ${points.map((p) => `L${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ")} L${w},${h} Z`;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height="34" aria-hidden="true">
+      <path d={areaD} fill={props.fill} />
+      <path d={lineD} fill="none" stroke={props.stroke} stroke-width="2" stroke-linecap="round" />
+    </svg>
+  );
+}
 
 const computeWsBase = () => {
   const explicit = import.meta.env.VITE_WS_BASE_URL;
@@ -64,11 +125,13 @@ export default function Dashboard(props: DashboardProps) {
   const toast = useToast();
   const navigate = useNavigate();
   const publicToken = props.publicToken;
-  const [merchants, setMerchants] = createSignal<Merchant[]>([]);
+  const [paymentMerchants, setPaymentMerchants] = createSignal<Merchant[]>([]);
+  const [cashMerchants, setCashMerchants] = createSignal<Merchant[]>([]);
   const [items, setItems] = createSignal<PaymentItem[]>([]);
   const [notFound, setNotFound] = createSignal(false);
   const [selectedMerchant, setSelectedMerchant] = createSignal<Merchant | null>(null);
   const [tab, setTab] = createSignal<"LINK" | "QRIS">("LINK");
+  const [menuSection, setMenuSection] = createSignal<"PAYMENTS" | "CASH">("PAYMENTS");
 
   const [newMerchantName, setNewMerchantName] = createSignal("");
   const [newMerchantCategory, setNewMerchantCategory] = createSignal("");
@@ -101,6 +164,12 @@ export default function Dashboard(props: DashboardProps) {
   let refreshInFlight: Promise<void> | null = null;
   const [openItemId, setOpenItemId] = createSignal<string | null>(null);
   const [nowMs, setNowMs] = createSignal(Date.now());
+  const toDateTimeLocal = (ms: number) => {
+    const d = new Date(ms);
+    if (!Number.isFinite(d.getTime())) return "";
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  };
   const initialDashLoading = (() => {
     try {
       return sessionStorage.getItem("dash_loading") === "1";
@@ -127,6 +196,53 @@ export default function Dashboard(props: DashboardProps) {
     }
     return () => globalThis.clearTimeout(guardId);
   });
+
+  const [cashPartners, setCashPartners] = createSignal<Partner[]>([]);
+  const [cashEntries, setCashEntries] = createSignal<CashTransactionEntry[]>([]);
+  const [cashEntriesTotal, setCashEntriesTotal] = createSignal(0);
+  const [cashSummaryRows, setCashSummaryRows] = createSignal<CashSummaryRow[]>([]);
+  const [cashEntriesRefreshTick, setCashEntriesRefreshTick] = createSignal(0);
+  const [cashGroup, setCashGroup] = createSignal<
+    "datetime" | "day" | "week" | "month" | "year" | "all"
+  >("day");
+  const [cashFrom, setCashFrom] = createSignal("");
+  const [cashTo, setCashTo] = createSignal("");
+  const [cashTypeFilter, setCashTypeFilter] = createSignal<"ALL" | "CASH_IN" | "CASH_OUT">("ALL");
+  const [cashSearch, setCashSearch] = createSignal("");
+  const [cashMerchantId, setCashMerchantId] = createSignal<string>("");
+  const [cashPartnerId, setCashPartnerId] = createSignal<string>("");
+  const [cashAdvancedOpen, setCashAdvancedOpen] = createSignal(false);
+  const [cashAdvMerchantName, setCashAdvMerchantName] = createSignal("");
+  const [cashAdvPartnerName, setCashAdvPartnerName] = createSignal("");
+  const [cashExporting, setCashExporting] = createSignal<string | null>(null);
+  const [cashExportOpen, setCashExportOpen] = createSignal(false);
+  const [cashEditOpen, setCashEditOpen] = createSignal(false);
+  const [cashLoading, setCashLoading] = createSignal(false);
+  const [cashInquiryLoading, setCashInquiryLoading] = createSignal(false);
+  const [cashPage, setCashPage] = createSignal(1);
+  const [newCashPartnerName, setNewCashPartnerName] = createSignal("");
+  const [newCashMerchantName, setNewCashMerchantName] = createSignal("");
+  const [cashTxDate, setCashTxDate] = createSignal(toDateTimeLocal(Date.now()));
+  const [cashTxOrderNumber, setCashTxOrderNumber] = createSignal("");
+  const [cashTxTotalAmount, setCashTxTotalAmount] = createSignal("");
+  const [cashTxCustomerFeePercent, setCashTxCustomerFeePercent] = createSignal("0");
+  const [cashTxMerchantFeePercent, setCashTxMerchantFeePercent] = createSignal("0");
+  const [cashTxCashType, setCashTxCashType] = createSignal<"CASH_IN" | "CASH_OUT">("CASH_IN");
+  const [cashTxStatus, setCashTxStatus] = createSignal<"PENDING" | "ACTIVE">("PENDING");
+  const [cashTxMerchantId, setCashTxMerchantId] = createSignal("");
+  const [cashTxPartnerId, setCashTxPartnerId] = createSignal("");
+  const [cashMutating, setCashMutating] = createSignal<string | null>(null);
+
+  const [cashEditId, setCashEditId] = createSignal<string | null>(null);
+  const [cashEditDate, setCashEditDate] = createSignal(toDateTimeLocal(Date.now()));
+  const [cashEditOrderNumber, setCashEditOrderNumber] = createSignal("");
+  const [cashEditTotalAmount, setCashEditTotalAmount] = createSignal("");
+  const [cashEditCustomerFeePercent, setCashEditCustomerFeePercent] = createSignal("0");
+  const [cashEditMerchantFeePercent, setCashEditMerchantFeePercent] = createSignal("0");
+  const [cashEditCashType, setCashEditCashType] = createSignal<"CASH_IN" | "CASH_OUT">("CASH_IN");
+  const [cashEditStatus, setCashEditStatus] = createSignal<"PENDING" | "ACTIVE">("PENDING");
+  const [cashEditMerchantId, setCashEditMerchantId] = createSignal("");
+  const [cashEditPartnerId, setCashEditPartnerId] = createSignal("");
 
   const readOnly = createMemo(() => Boolean(publicToken));
   const [adminAccessLoading, setAdminAccessLoading] = createSignal(false);
@@ -192,6 +308,19 @@ export default function Dashboard(props: DashboardProps) {
       return `Rp ${n}`;
     }
   };
+  const formatMaybeIdr = (n: number | null): string => (n === null ? "—" : formatIdr(n));
+  const formatCashRecordStatus = (s: string) =>
+    s === "ACTIVE" ? "Success" : s === "PENDING" ? "Pending" : s;
+  const formatPercent = (n: number) => {
+    const fixed = n.toFixed(2);
+    const trimmed = fixed.endsWith(".00")
+      ? fixed.slice(0, -3)
+      : fixed.endsWith("0")
+        ? fixed.slice(0, -1)
+        : fixed;
+    return `${trimmed}%`;
+  };
+  const formatMaybePercent = (n: number | null): string => (n === null ? "—" : formatPercent(n));
 
   createEffect(() => {
     const id = globalThis.setInterval(() => setNowMs(Date.now()), 1000);
@@ -317,54 +446,41 @@ export default function Dashboard(props: DashboardProps) {
   const refreshCore = async () => {
     try {
       if (publicToken) {
-        const res = await api.get<{ ok: boolean; merchants?: Merchant[]; items?: PaymentItem[] }>(
+        const res = await api.get<{ merchants?: Merchant[]; items?: PaymentItem[] }>(
           `/public/dashboard/${encodeURIComponent(publicToken)}`,
         );
-        if (!res.ok) {
-          setNotFound(true);
-          return;
-        }
         setNotFound(false);
-        setMerchants(res.merchants ?? []);
+        const all = Array.isArray(res.merchants) ? res.merchants : [];
+        setPaymentMerchants(all.filter((m) => m.category !== "Cash In/Out"));
         setItems((res.items ?? []).filter((i) => i.status === "ACTIVE"));
         return;
       }
 
-      type Unauthorized = { ok: false; code: "UNAUTHORIZED" };
-      const isUnauthorized = (v: unknown): v is Unauthorized =>
-        Boolean(v) &&
-        typeof v === "object" &&
-        (v as { ok?: unknown }).ok === false &&
-        (v as { code?: unknown }).code === "UNAUTHORIZED";
-
-      const [mRaw, pRaw, cRaw] = await Promise.all([
-        api.get<unknown>("/merchants/"),
-        api.get<unknown>("/payments/active"),
-        api.get<unknown>("/categories/"),
+      const [m, p, c] = await Promise.all([
+        api.get<{ merchants?: Merchant[] }>("/merchants/"),
+        api.get<{ items?: PaymentItem[] }>("/payments/active"),
+        api.get<{ categories?: { id: string | null; name: string }[] }>("/categories/"),
       ]);
-
-      if (isUnauthorized(mRaw) || isUnauthorized(pRaw) || isUnauthorized(cRaw)) {
-        forceSignIn("Session expired. Please sign in again.");
-        return;
-      }
-
-      const m = mRaw as { merchants?: Merchant[] };
-      const p = pRaw as { items?: PaymentItem[] };
-      const c = cRaw as { categories?: { id: string | null; name: string }[] };
 
       const nextMerchants = Array.isArray(m.merchants) ? m.merchants : [];
       const nextItems = Array.isArray(p.items) ? p.items : [];
       const nextCategories = Array.isArray(c.categories) ? c.categories : [];
+      const nextPaymentMerchants = nextMerchants.filter((m) => m.category !== "Cash In/Out");
 
-      setMerchants(nextMerchants);
+      setPaymentMerchants(nextPaymentMerchants);
       setItems(nextItems.filter((i) => i.status === "ACTIVE"));
       setCategoriesList(nextCategories);
-      if (!postMerchantId() && nextMerchants.length) setPostMerchantId(nextMerchants[0].id);
+      if (!postMerchantId() && nextPaymentMerchants.length)
+        setPostMerchantId(nextPaymentMerchants[0].id);
       if (!newMerchantCategory() && nextCategories.length)
         setNewMerchantCategory(nextCategories[0].name);
     } catch (e) {
       if (publicToken) {
         setNotFound(true);
+        return;
+      }
+      if (e instanceof Error && e.message === "UNAUTHORIZED") {
+        forceSignIn("Session expired. Please sign in again.");
         return;
       }
       if (hasLocalToken()) {
@@ -400,8 +516,356 @@ export default function Dashboard(props: DashboardProps) {
     }
   };
 
+  const parseLocalToIso = (raw: string) => {
+    const v = raw.trim();
+    if (!v) return null;
+    const d = new Date(v);
+    if (!Number.isFinite(d.getTime())) return null;
+    return d.toISOString();
+  };
+
+  const parsePercentInput = (raw: string) => {
+    const v = raw.trim();
+    if (!v) return null;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    return n;
+  };
+
+  const refreshCashMerchants = async () => {
+    const res = await api.get<{ merchants?: Merchant[] }>("/merchants/");
+    const all = Array.isArray(res.merchants) ? res.merchants : [];
+    const next = all.filter((m) => m.category === "Cash In/Out");
+    next.sort((a, b) => a.name.localeCompare(b.name));
+    setCashMerchants(next);
+    if (!cashTxMerchantId().trim() && next.length) setCashTxMerchantId(next[0].id);
+  };
+
+  const refreshCashPartners = async () => {
+    const res = await api.get<{ partners: Partner[] }>("/cash/partners");
+    const next = Array.isArray(res.partners) ? res.partners : [];
+    setCashPartners(next);
+    if (!cashPartnerId().trim() && next.length) setCashPartnerId(next[0].id);
+    if (!cashTxPartnerId().trim() && next.length) setCashTxPartnerId(next[0].id);
+  };
+
+  const refreshCashSummary = async () => {
+    const sp = new URLSearchParams();
+    sp.set("group", cashGroup());
+    const fromIso = parseLocalToIso(cashFrom());
+    const toIso = parseLocalToIso(cashTo());
+    if (fromIso) sp.set("from", fromIso);
+    if (toIso) sp.set("to", toIso);
+    if (cashMerchantId().trim()) sp.set("merchantId", cashMerchantId().trim());
+    if (cashPartnerId().trim()) sp.set("partnerId", cashPartnerId().trim());
+    const res = await api.get<{ rows: CashSummaryRow[] }>(`/cash/summary?${sp.toString()}`);
+    setCashSummaryRows(Array.isArray(res.rows) ? res.rows : []);
+  };
+
+  const cashPageSize = 25;
+  const cashTotalPages = createMemo(() =>
+    Math.max(1, Math.ceil(Math.max(0, cashEntriesTotal()) / cashPageSize)),
+  );
+  createEffect(() => {
+    const p = cashPage();
+    const tp = cashTotalPages();
+    if (p > tp) setCashPage(tp);
+    if (p < 1) setCashPage(1);
+  });
+
+  let cashInquiryReq = 0;
+  const refreshCashEntries = async () => {
+    cashInquiryReq += 1;
+    const reqId = cashInquiryReq;
+    setCashInquiryLoading(true);
+    const sp = new URLSearchParams();
+    const fromIso = parseLocalToIso(cashFrom());
+    const toIso = parseLocalToIso(cashTo());
+    if (fromIso) sp.set("from", fromIso);
+    if (toIso) sp.set("to", toIso);
+    if (cashTypeFilter() !== "ALL") sp.set("cashType", cashTypeFilter());
+    if (cashSearch().trim()) sp.set("search", cashSearch().trim());
+    if (cashMerchantId().trim()) sp.set("merchantId", cashMerchantId().trim());
+    if (cashPartnerId().trim()) sp.set("partnerId", cashPartnerId().trim());
+    if (cashAdvMerchantName().trim()) sp.set("merchantName", cashAdvMerchantName().trim());
+    if (cashAdvPartnerName().trim()) sp.set("partnerName", cashAdvPartnerName().trim());
+    sp.set("take", String(cashPageSize));
+    sp.set("skip", String((cashPage() - 1) * cashPageSize));
+    try {
+      const res = await api.get<{ entries: CashTransactionEntry[]; totalCount?: number }>(
+        `/cash/transactions?${sp.toString()}`,
+      );
+      if (reqId !== cashInquiryReq) return;
+      setCashEntries(Array.isArray(res.entries) ? res.entries : []);
+      setCashEntriesTotal(Math.max(0, Number(res.totalCount ?? 0)));
+    } finally {
+      if (reqId === cashInquiryReq) setCashInquiryLoading(false);
+    }
+  };
+
+  const refreshCashAll = async (opts: { showSpinner: boolean }) => {
+    if (readOnly()) return;
+    if (opts.showSpinner) setCashLoading(true);
+    try {
+      await Promise.all([refreshCashPartners(), refreshCashSummary(), refreshCashEntries()]);
+    } finally {
+      if (opts.showSpinner) setCashLoading(false);
+    }
+  };
+
+  const cashSummaryLatest = createMemo(() => {
+    const rows = cashSummaryRows();
+    if (!rows.length) return null;
+    return rows.slice().sort((a, b) => b.bucket.localeCompare(a.bucket))[0];
+  });
+  const cashSummaryDisplay = createMemo(() => {
+    const latest = cashSummaryLatest();
+    return (
+      latest ?? {
+        bucket: "",
+        netProfit: 0,
+        grossProfit: 0,
+        cashIn: 0,
+        cashOut: 0,
+        pendingFunds: 0,
+      }
+    );
+  });
+  const cashSummarySeries = createMemo(() => {
+    const sorted = cashSummaryRows()
+      .slice()
+      .sort((a, b) => a.bucket.localeCompare(b.bucket));
+    if (sorted.length === 0) {
+      return {
+        netProfit: [0, 0],
+        grossProfit: [0, 0],
+        cashIn: [0, 0],
+        cashOut: [0, 0],
+        pendingFunds: [0, 0],
+      };
+    }
+    const last = sorted.slice(-24);
+    return {
+      netProfit: last.map((r) => r.netProfit),
+      grossProfit: last.map((r) => r.grossProfit),
+      cashIn: last.map((r) => r.cashIn),
+      cashOut: last.map((r) => r.cashOut),
+      pendingFunds: last.map((r) => r.pendingFunds),
+    };
+  });
+
+  const hasCashMerchants = createMemo(() => cashMerchants().length > 0);
+  const hasCashPartners = createMemo(() => cashPartners().length > 0);
+  const showCashPartnerSection = createMemo(() => hasCashMerchants());
+  const showCashRecordSection = createMemo(() => hasCashMerchants() && hasCashPartners());
+
+  const cashBaseAmountRaw = createMemo(() => cashTxTotalAmount().replace(/[^\d]/g, ""));
+  const cashBaseAmount = createMemo(() => {
+    const raw = cashBaseAmountRaw();
+    const n = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(n) ? Math.trunc(n) : Number.NaN;
+  });
+  const cashBaseAmountValue = createMemo(() => {
+    const v = cashBaseAmount();
+    return Number.isFinite(v) && v > 0 ? v : null;
+  });
+  const cashCustomerFeePercentValue = createMemo(() =>
+    parsePercentInput(cashTxCustomerFeePercent()),
+  );
+  const cashMerchantFeePercentValue = createMemo(() =>
+    parsePercentInput(cashTxMerchantFeePercent()),
+  );
+  const cashFeeAmount = (base: number, pct: number) => Math.trunc((base * pct) / 100);
+  const cashCustomerFeeAmount = createMemo(() => {
+    const base = cashBaseAmount();
+    const pct = cashCustomerFeePercentValue();
+    if (!Number.isFinite(base) || base <= 0 || pct === null) return null;
+    return cashFeeAmount(base, pct);
+  });
+  const cashMerchantFeeAmount = createMemo(() => {
+    const base = cashBaseAmount();
+    const pct = cashMerchantFeePercentValue();
+    if (!Number.isFinite(base) || base <= 0 || pct === null) return null;
+    return cashFeeAmount(base, pct);
+  });
+  const cashGrossFeeAmount = createMemo(() => {
+    return cashCustomerFeeAmount();
+  });
+  const cashNetProfitAmount = createMemo(() => {
+    const gross = cashGrossFeeAmount();
+    const merchant = cashMerchantFeeAmount();
+    if (gross === null || merchant === null) return null;
+    return gross - merchant;
+  });
+  const cashNetProfitIsNegative = createMemo(() => {
+    const v = cashNetProfitAmount();
+    return typeof v === "number" && v < 0;
+  });
+  const cashReceiveFromMerchantAmount = createMemo(() => {
+    const base = cashBaseAmount();
+    const merchant = cashMerchantFeeAmount();
+    if (!Number.isFinite(base) || base <= 0 || merchant === null) return null;
+    return base - merchant;
+  });
+  const cashPayToCustomerAmount = createMemo(() => {
+    const base = cashBaseAmount();
+    const gross = cashGrossFeeAmount();
+    if (!Number.isFinite(base) || base <= 0 || gross === null) return null;
+    return base - gross;
+  });
+
+  const cashEditBaseAmountRaw = createMemo(() => cashEditTotalAmount().replace(/[^\d]/g, ""));
+  const cashEditBaseAmount = createMemo(() => {
+    const raw = cashEditBaseAmountRaw();
+    const n = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(n) ? Math.trunc(n) : Number.NaN;
+  });
+  const cashEditBaseAmountValue = createMemo(() => {
+    const v = cashEditBaseAmount();
+    return Number.isFinite(v) && v > 0 ? v : null;
+  });
+  const cashEditCustomerFeePercentValue = createMemo(() =>
+    parsePercentInput(cashEditCustomerFeePercent()),
+  );
+  const cashEditMerchantFeePercentValue = createMemo(() =>
+    parsePercentInput(cashEditMerchantFeePercent()),
+  );
+  const cashEditCustomerFeeAmount = createMemo(() => {
+    const base = cashEditBaseAmount();
+    const pct = cashEditCustomerFeePercentValue();
+    if (!Number.isFinite(base) || base <= 0 || pct === null) return null;
+    return cashFeeAmount(base, pct);
+  });
+  const cashEditMerchantFeeAmount = createMemo(() => {
+    const base = cashEditBaseAmount();
+    const pct = cashEditMerchantFeePercentValue();
+    if (!Number.isFinite(base) || base <= 0 || pct === null) return null;
+    return cashFeeAmount(base, pct);
+  });
+  const cashEditGrossFeeAmount = createMemo(() => cashEditCustomerFeeAmount());
+  const cashEditNetProfitAmount = createMemo(() => {
+    const gross = cashEditGrossFeeAmount();
+    const merchant = cashEditMerchantFeeAmount();
+    if (gross === null || merchant === null) return null;
+    return gross - merchant;
+  });
+  const cashEditReceiveFromMerchantAmount = createMemo(() => {
+    const base = cashEditBaseAmount();
+    const merchant = cashEditMerchantFeeAmount();
+    if (!Number.isFinite(base) || base <= 0 || merchant === null) return null;
+    return base - merchant;
+  });
+  const cashEditPayToCustomerAmount = createMemo(() => {
+    const base = cashEditBaseAmount();
+    const gross = cashEditGrossFeeAmount();
+    if (!Number.isFinite(base) || base <= 0 || gross === null) return null;
+    return base - gross;
+  });
+
+  const downloadCashExport = async (format: "pdf" | "xlsx" | "xml" | "json" | "csv") => {
+    if (cashExporting()) return;
+    setCashExporting(format);
+    try {
+      const rawBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
+      const useDevProxy = (() => {
+        if (!import.meta.env.DEV) return false;
+        if (typeof rawBaseUrl !== "string") return false;
+        const v = rawBaseUrl.trim().toLowerCase();
+        return v.startsWith("http://") || v.startsWith("https://");
+      })();
+      const baseUrl = useDevProxy ? "" : rawBaseUrl;
+
+      const sp = new URLSearchParams();
+      sp.set("format", format);
+      const fromIso = parseLocalToIso(cashFrom());
+      const toIso = parseLocalToIso(cashTo());
+      if (fromIso) sp.set("from", fromIso);
+      if (toIso) sp.set("to", toIso);
+      if (cashTypeFilter() !== "ALL") sp.set("cashType", cashTypeFilter());
+      if (cashSearch().trim()) sp.set("search", cashSearch().trim());
+      if (cashMerchantId().trim()) sp.set("merchantId", cashMerchantId().trim());
+      if (cashPartnerId().trim()) sp.set("partnerId", cashPartnerId().trim());
+      if (cashAdvMerchantName().trim()) sp.set("merchantName", cashAdvMerchantName().trim());
+      if (cashAdvPartnerName().trim()) sp.set("partnerName", cashAdvPartnerName().trim());
+
+      const headers = new Headers();
+      try {
+        const token = localStorage.getItem("auth_token");
+        if (token) headers.set("authorization", `Bearer ${token}`);
+      } catch {}
+      try {
+        const existing = localStorage.getItem("device_id");
+        const deviceId = existing?.trim() ? existing.trim() : crypto.randomUUID();
+        if (!existing?.trim()) localStorage.setItem("device_id", deviceId);
+        headers.set("x-device-id", deviceId);
+      } catch {}
+
+      const res = await fetch(`${baseUrl}/cash/export?${sp.toString()}`, {
+        method: "GET",
+        headers,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const text = (await res.text()).trim();
+        throw new Error(text || `HTTP_${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const cd = res.headers.get("content-disposition") ?? "";
+      const match = /filename="([^"]+)"/.exec(cd);
+      a.download = match?.[1] ?? `cash-in-out.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast("success", "Export downloaded.");
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "EXPORT_FAILED");
+    } finally {
+      setCashExporting(null);
+    }
+  };
+
+  createEffect(() => {
+    if (menuSection() !== "CASH") {
+      setCashExportOpen(false);
+      return;
+    }
+    if (!cashExportOpen()) return;
+    const onDown = (ev: MouseEvent | TouchEvent) => {
+      const t = ev.target;
+      if (!(t instanceof Node)) return;
+      const wrap = document.querySelector(".exportWrap");
+      if (!wrap) return;
+      if (!wrap.contains(t)) setCashExportOpen(false);
+    };
+    document.addEventListener("mousedown", onDown, { capture: true });
+    document.addEventListener("touchstart", onDown, { capture: true });
+    onCleanup(() => {
+      document.removeEventListener("mousedown", onDown, { capture: true });
+      document.removeEventListener("touchstart", onDown, { capture: true });
+    });
+  });
+
+  const refreshBusy = createMemo(() => (menuSection() === "CASH" ? cashLoading() : syncing()));
+  const refreshDisabled = createMemo(() =>
+    menuSection() === "CASH"
+      ? cashLoading() || Boolean(cashMutating())
+      : syncing() || Boolean(action()),
+  );
+  const refreshActiveMenu = async () => {
+    if (menuSection() === "CASH") {
+      await Promise.all([refreshCashMerchants(), refreshCashAll({ showSpinner: true })]);
+      return;
+    }
+    await refresh({ showSpinner: true, showSkeleton: false });
+  };
+
   createEffect(() => {
     if (!readOnly() && (auth.loading() || !auth.me())) return;
+    if (!readOnly() && menuSection() !== "PAYMENTS") return;
     void refresh({ showSpinner: true, showSkeleton: true });
     const wsUrl = `${wsBase.replace(/\/$/, "")}/ws`;
     let ws: WebSocket | null = null;
@@ -456,24 +920,93 @@ export default function Dashboard(props: DashboardProps) {
   });
 
   createEffect(() => {
+    if (menuSection() !== "CASH") return;
+    if (readOnly()) return;
+    if (auth.loading() || !auth.me()) return;
+    void (async () => {
+      await Promise.all([refreshCashMerchants(), refreshCashAll({ showSpinner: true })]);
+    })();
+  });
+
+  createEffect(() => {
+    if (menuSection() !== "CASH") return;
+    if (readOnly()) return;
+    if (auth.loading() || !auth.me()) return;
+    cashPage();
+    cashEntriesRefreshTick();
+    void refreshCashEntries();
+  });
+
+  createEffect(() => {
+    if (menuSection() !== "CASH") return;
+    if (readOnly()) return;
+    if (auth.loading() || !auth.me()) return;
+    cashFrom();
+    cashTo();
+    cashTypeFilter();
+    cashMerchantId();
+    cashPartnerId();
+    cashAdvMerchantName();
+    cashAdvPartnerName();
+    setCashPage(1);
+    setCashEntriesRefreshTick((v) => v + 1);
+  });
+
+  createEffect(() => {
+    if (menuSection() !== "CASH") return;
+    if (readOnly()) return;
+    if (auth.loading() || !auth.me()) return;
+    cashGroup();
+    cashFrom();
+    cashTo();
+    cashMerchantId();
+    cashPartnerId();
+    void refreshCashSummary();
+  });
+
+  createEffect(() => {
+    if (menuSection() !== "CASH") return;
+    if (readOnly()) return;
+    if (auth.loading() || !auth.me()) return;
+    const raw = cashSearch();
+    const trimmed = raw.trim();
+    const id = globalThis.setTimeout(
+      () => {
+        setCashPage(1);
+        setCashEntriesRefreshTick((v) => v + 1);
+      },
+      trimmed ? 350 : 0,
+    );
+    onCleanup(() => globalThis.clearTimeout(id));
+  });
+
+  createEffect(() => {
+    if (menuSection() !== "CASH") return;
+    if (!cashTxMerchantId().trim() && cashMerchants().length)
+      setCashTxMerchantId(cashMerchants()[0].id);
+  });
+
+  createEffect(() => {
     if (readOnly()) return;
     if (adminChecked()) return;
     if (!hasLocalToken()) return;
     setAdminChecked(true);
+    if (auth.me()?.role === "SUPER") {
+      setHasAdminAccess(true);
+      setAdminAccessLoading(false);
+      return;
+    }
     setAdminAccessLoading(true);
     void api
-      .get<unknown>("/admin/access")
-      .then((res) => {
-        const ok = Boolean(res && typeof res === "object" && (res as { ok?: unknown }).ok === true);
-        setHasAdminAccess(ok);
-      })
+      .get<unknown>("/api/admin/access")
+      .then(() => setHasAdminAccess(true))
       .catch(() => setHasAdminAccess(false))
       .finally(() => setAdminAccessLoading(false));
   });
 
-  const categories = createMemo(() => groupByCategory(merchants()));
+  const categories = createMemo(() => groupByCategory(paymentMerchants()));
   const hasAnyCategories = createMemo(() => categoriesList().length > 0);
-  const hasAnyMerchants = createMemo(() => merchants().length > 0);
+  const hasAnyMerchants = createMemo(() => paymentMerchants().length > 0);
   const isCategoryNameValid = createMemo(() => newCategoryName().trim().length >= 2);
   const categoryNameError = createMemo(() =>
     touchedCategoryName() && !isCategoryNameValid() ? "Please fill in this field." : null,
@@ -613,9 +1146,216 @@ export default function Dashboard(props: DashboardProps) {
     }
   };
 
+  const addCashPartner = async () => {
+    if (readOnly()) return;
+    const name = newCashPartnerName().trim();
+    if (name.length < 2) return;
+    if (cashMutating()) return;
+    setCashMutating("add_partner");
+    showToast("progress", "Registering partner…");
+    try {
+      const res = await api.post<{ partner: Partner }>("/cash/partners", { name });
+      setNewCashPartnerName("");
+      if (res.partner) {
+        setCashPartners((prev) => {
+          const next = [...prev.filter((p) => p.id !== res.partner.id), res.partner];
+          next.sort((a, b) => a.name.localeCompare(b.name));
+          return next;
+        });
+        if (!cashTxPartnerId().trim()) setCashTxPartnerId(res.partner.id);
+      }
+      showToast("success", "Partner registered.");
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "ADD_PARTNER_FAILED");
+    } finally {
+      setCashMutating(null);
+    }
+  };
+
+  const addCashMerchant = async () => {
+    if (readOnly()) return;
+    const name = newCashMerchantName().trim();
+    if (name.length < 2) return;
+    if (cashMutating()) return;
+    setCashMutating("add_merchant");
+    showToast("progress", "Registering merchant…");
+    try {
+      const res = await api.post<{ merchant: Merchant }>("/merchants/", {
+        name,
+        category: "Cash In/Out",
+      });
+      setNewCashMerchantName("");
+      if (res.merchant) {
+        setCashMerchants((prev) => {
+          const next = [...prev.filter((m) => m.id !== res.merchant.id), res.merchant];
+          next.sort((a, b) => a.name.localeCompare(b.name));
+          return next;
+        });
+        setCashTxMerchantId(res.merchant.id);
+      }
+      showToast("success", "Merchant registered.");
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "ADD_MERCHANT_FAILED");
+    } finally {
+      setCashMutating(null);
+    }
+  };
+
+  const addCashTransaction = async () => {
+    if (readOnly()) return;
+    if (cashMutating()) return;
+    const parsePercent = (raw: string) => {
+      const v = raw.trim();
+      if (!v) return null;
+      const n = Number(v);
+      if (!Number.isFinite(n)) return null;
+      return n;
+    };
+    const transactionDateIso = parseLocalToIso(cashTxDate());
+    if (!transactionDateIso) {
+      showToast("error", "Transaction date is required.");
+      return;
+    }
+    const orderNumber = cashTxOrderNumber().trim();
+    if (orderNumber.length < 2) {
+      showToast("error", "Order number is required.");
+      return;
+    }
+    const amountRaw = cashTxTotalAmount().replace(/[^\d]/g, "");
+    const totalAmount = amountRaw ? Number(amountRaw) : Number.NaN;
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+      showToast("error", "Base total amount is required.");
+      return;
+    }
+    const customerFeePercent = parsePercent(cashTxCustomerFeePercent());
+    const merchantFeePercent = parsePercent(cashTxMerchantFeePercent());
+    if (customerFeePercent === null || customerFeePercent < 0 || customerFeePercent > 100) {
+      showToast("error", "Customer fee must be a number between 0 and 100.");
+      return;
+    }
+    if (merchantFeePercent === null || merchantFeePercent < 0 || merchantFeePercent > 100) {
+      showToast("error", "Merchant fee must be a number between 0 and 100.");
+      return;
+    }
+    if (!cashTxMerchantId().trim()) {
+      showToast("error", "Merchant is required.");
+      return;
+    }
+    if (!cashTxPartnerId().trim()) {
+      showToast("error", "Partner is required.");
+      return;
+    }
+
+    setCashMutating("add_tx");
+    showToast("progress", "Adding cash record…");
+    try {
+      await api.post("/cash/transactions", {
+        cashType: cashTxCashType(),
+        transactionDate: transactionDateIso,
+        orderNumber,
+        totalAmount,
+        customerFeePercent,
+        merchantFeePercent,
+        merchantId: cashTxMerchantId(),
+        partnerId: cashTxPartnerId(),
+        status: cashTxStatus(),
+      });
+      setCashTxOrderNumber("");
+      setCashTxTotalAmount("");
+      setCashTxStatus("PENDING");
+      showToast("success", "Record added.");
+      setCashPage(1);
+      await refreshCashAll({ showSpinner: true });
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "ADD_RECORD_FAILED");
+    } finally {
+      setCashMutating(null);
+    }
+  };
+
+  const openCashEdit = (entry: CashTransactionEntry) => {
+    if (readOnly()) return;
+    setCashEditId(entry.id);
+    setCashEditDate(toDateTimeLocal(new Date(entry.transactionDate).getTime()));
+    setCashEditOrderNumber(entry.orderNumber);
+    setCashEditTotalAmount(String(entry.totalAmount));
+    setCashEditCustomerFeePercent(String(entry.customerFeeBps / 100));
+    setCashEditMerchantFeePercent(String(entry.merchantFeeBps / 100));
+    setCashEditCashType(entry.cashType);
+    setCashEditStatus(entry.status === "ACTIVE" ? "ACTIVE" : "PENDING");
+    setCashEditMerchantId(entry.merchant.id);
+    setCashEditPartnerId(entry.partner.id);
+    setCashEditOpen(true);
+  };
+
+  const saveCashEdit = async () => {
+    if (readOnly()) return;
+    const id = cashEditId();
+    if (!id) return;
+    if (cashMutating()) return;
+
+    const transactionDateIso = parseLocalToIso(cashEditDate());
+    if (!transactionDateIso) {
+      showToast("error", "Transaction date is required.");
+      return;
+    }
+    const orderNumber = cashEditOrderNumber().trim();
+    if (orderNumber.length < 2) {
+      showToast("error", "Order number is required.");
+      return;
+    }
+    const amountRaw = cashEditTotalAmount().replace(/[^\d]/g, "");
+    const totalAmount = amountRaw ? Number(amountRaw) : Number.NaN;
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+      showToast("error", "Base total amount is required.");
+      return;
+    }
+    const customerFeePercent = parsePercentInput(cashEditCustomerFeePercent());
+    const merchantFeePercent = parsePercentInput(cashEditMerchantFeePercent());
+    if (customerFeePercent === null || customerFeePercent < 0 || customerFeePercent > 100) {
+      showToast("error", "Customer fee must be a number between 0 and 100.");
+      return;
+    }
+    if (merchantFeePercent === null || merchantFeePercent < 0 || merchantFeePercent > 100) {
+      showToast("error", "Merchant fee must be a number between 0 and 100.");
+      return;
+    }
+    if (!cashEditMerchantId().trim()) {
+      showToast("error", "Merchant is required.");
+      return;
+    }
+    if (!cashEditPartnerId().trim()) {
+      showToast("error", "Partner is required.");
+      return;
+    }
+
+    setCashMutating("edit_tx");
+    showToast("progress", "Updating cash record…");
+    try {
+      await api.post(`/cash/transactions/${encodeURIComponent(id)}`, {
+        cashType: cashEditCashType(),
+        transactionDate: transactionDateIso,
+        orderNumber,
+        totalAmount,
+        customerFeePercent,
+        merchantFeePercent,
+        merchantId: cashEditMerchantId(),
+        partnerId: cashEditPartnerId(),
+        status: cashEditStatus(),
+      });
+      setCashEditOpen(false);
+      showToast("success", "Record updated.");
+      await refreshCashAll({ showSpinner: true });
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "UPDATE_RECORD_FAILED");
+    } finally {
+      setCashMutating(null);
+    }
+  };
+
   const post = async () => {
     if (readOnly()) return;
-    if (merchants().length === 0) {
+    if (paymentMerchants().length === 0) {
       showToast("error", "Add a merchant first.");
       return;
     }
@@ -705,9 +1445,9 @@ export default function Dashboard(props: DashboardProps) {
   const merchantLayoutPageSize = 20;
   const [merchantLayoutPage, setMerchantLayoutPage] = createSignal(1);
   const merchantsSorted = createMemo(() =>
-    merchants()
+    paymentMerchants()
       .slice()
-      .sort((a, b) => a.name.localeCompare(b.name)),
+      .sort((a: Merchant, b: Merchant) => a.name.localeCompare(b.name)),
   );
   const merchantLayoutTotalPages = createMemo(() =>
     Math.max(1, Math.ceil(merchantsSorted().length / merchantLayoutPageSize)),
@@ -800,7 +1540,7 @@ export default function Dashboard(props: DashboardProps) {
           <div class="panelInner">
             <div style="display: grid; place-items: center; padding: 30px 12px; gap: 10px">
               <span class="spinner" />
-              <div style="color: rgba(250,250,255,0.72)">Loading…</div>
+              <div style="color: var(--muted)">Loading…</div>
             </div>
           </div>
         </div>
@@ -827,7 +1567,7 @@ export default function Dashboard(props: DashboardProps) {
         <div class="pageOverlay">
           <div style="display: grid; place-items: center; padding: 30px 12px; gap: 10px">
             <span class="spinner" />
-            <div style="color: rgba(250,250,255,0.72)">Loading…</div>
+            <div style="color: var(--muted)">Loading…</div>
           </div>
         </div>
       </Show>
@@ -841,12 +1581,12 @@ export default function Dashboard(props: DashboardProps) {
               <button
                 class="btn"
                 type="button"
-                onClick={() => void refresh({ showSpinner: true, showSkeleton: false })}
-                disabled={syncing() || Boolean(action())}
+                onClick={() => void refreshActiveMenu()}
+                disabled={refreshDisabled()}
               >
                 <span style="display: inline-flex; gap: 10px; align-items: center; justify-content: center; width: 100%">
-                  {syncing() ? <span class="spinner" /> : null}
-                  {!syncing() ? (
+                  {refreshBusy() ? <span class="spinner" /> : null}
+                  {!refreshBusy() ? (
                     <svg
                       width="16"
                       height="16"
@@ -860,7 +1600,7 @@ export default function Dashboard(props: DashboardProps) {
                       <path d="M21 3v6h-6" />
                     </svg>
                   ) : null}
-                  <span>{syncing() ? "Refreshing…" : "Refresh"}</span>
+                  <span>{refreshBusy() ? "Refreshing…" : "Refresh"}</span>
                 </span>
               </button>
               <Show when={!readOnly()}>
@@ -932,465 +1672,847 @@ export default function Dashboard(props: DashboardProps) {
           <div class="grid" style="margin-top: 18px">
             <div class="card" style="grid-column: span 8">
               <div class="cardInner">
-                <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
-                  <h2 class="sectionH2">Totals:</h2>
-                  <div class="statPills">
-                    <span class="statPill">
-                      Merchants: <b>{merchants().length}</b>
-                    </span>
-                    <span class="statPill">
-                      Payment Links: <b>{totalLinks()}</b>
-                    </span>
-                    <span class="statPill">
-                      QRIS: <b>{totalQris()}</b>
-                    </span>
-                  </div>
-                </div>
-
-                <div style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 12px">
-                  <h2 class="sectionH2">Filter by:</h2>
-                  <div class="segmented">
-                    <button
-                      classList={{ segBtn: true, segBtnActive: layoutMode() === "CATEGORY" }}
-                      type="button"
-                      onClick={() => setLayoutMode("CATEGORY")}
-                    >
-                      Category
-                    </button>
-                    <button
-                      classList={{ segBtn: true, segBtnActive: layoutMode() === "MERCHANT" }}
-                      type="button"
-                      onClick={() => setLayoutMode("MERCHANT")}
-                    >
-                      Merchant
-                    </button>
-                    <button
-                      classList={{ segBtn: true, segBtnActive: layoutMode() === "LINK" }}
-                      type="button"
-                      onClick={() => setLayoutMode("LINK")}
-                    >
-                      Payment Link
-                    </button>
-                    <button
-                      classList={{ segBtn: true, segBtnActive: layoutMode() === "QRIS" }}
-                      type="button"
-                      onClick={() => setLayoutMode("QRIS")}
-                    >
-                      QRIS
-                    </button>
-                  </div>
-                </div>
-
-                <Show when={!readOnly() && shareUrl()}>
-                  <div style="margin-top: 12px; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap">
-                    <h2 class="sectionH2">Share:</h2>
-                    <div class="segmented" style="margin-left: auto">
+                <div class="dashMenu">
+                  <div class="dashMenuSection">
+                    <div class="dashMenuLabel">Payment Links</div>
+                    <div class="dashMenuRow">
                       <button
-                        class="segBtn"
+                        classList={{
+                          dashMenuBtn: true,
+                          dashMenuBtnActive:
+                            menuSection() === "PAYMENTS" && layoutMode() === "CATEGORY",
+                        }}
                         type="button"
                         onClick={() => {
-                          const url = shareUrl();
-                          if (!url) return;
-                          openUrl("share-open", url);
+                          setMenuSection("PAYMENTS");
+                          setLayoutMode("CATEGORY");
                         }}
                       >
-                        <span style="display: inline-flex; gap: 10px; align-items: center">
-                          {openItemId() === "share-open" ? <span class="spinner" /> : null}
-                          <span>Open</span>
-                        </span>
+                        Category
                       </button>
                       <button
-                        class="segBtn"
+                        classList={{
+                          dashMenuBtn: true,
+                          dashMenuBtnActive:
+                            menuSection() === "PAYMENTS" && layoutMode() === "MERCHANT",
+                        }}
                         type="button"
-                        onClick={async () => {
-                          try {
-                            const url = shareUrl();
-                            if (!url) return;
-                            await navigator.clipboard.writeText(url);
-                            showToast("success", "Link copied.");
-                          } catch {
-                            showToast("error", "COPY_FAILED");
-                          }
+                        onClick={() => {
+                          setMenuSection("PAYMENTS");
+                          setLayoutMode("MERCHANT");
                         }}
                       >
-                        Copy
+                        Merchant
                       </button>
+                      <button
+                        classList={{
+                          dashMenuBtn: true,
+                          dashMenuBtnActive:
+                            menuSection() === "PAYMENTS" && layoutMode() === "LINK",
+                        }}
+                        type="button"
+                        onClick={() => {
+                          setMenuSection("PAYMENTS");
+                          setLayoutMode("LINK");
+                        }}
+                      >
+                        Payment Link
+                      </button>
+                      <button
+                        classList={{
+                          dashMenuBtn: true,
+                          dashMenuBtnActive:
+                            menuSection() === "PAYMENTS" && layoutMode() === "QRIS",
+                        }}
+                        type="button"
+                        onClick={() => {
+                          setMenuSection("PAYMENTS");
+                          setLayoutMode("QRIS");
+                        }}
+                      >
+                        QRIS
+                      </button>
+                    </div>
+                  </div>
+
+                  <Show when={!readOnly()}>
+                    <div class="dashMenuSection">
+                      <div class="dashMenuLabel">Cash In/Out</div>
+                      <div class="dashMenuRow">
+                        <button
+                          classList={{
+                            dashMenuBtn: true,
+                            dashMenuBtnActive: menuSection() === "CASH",
+                          }}
+                          type="button"
+                          onClick={() => setMenuSection("CASH")}
+                        >
+                          Cash In/Out
+                        </button>
+                      </div>
+                    </div>
+                  </Show>
+                </div>
+
+                <Show when={menuSection() === "PAYMENTS"}>
+                  <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+                    <h2 class="sectionH2">Totals:</h2>
+                    <div class="statPills">
+                      <span class="statPill">
+                        Merchants: <b>{paymentMerchants().length}</b>
+                      </span>
+                      <span class="statPill">
+                        Payment Link/s: <b>{totalLinks()}</b>
+                      </span>
+                      <span class="statPill">
+                        QRIS: <b>{totalQris()}</b>
+                      </span>
                     </div>
                   </div>
                 </Show>
 
-                <Show
-                  when={!loading() || merchants().length > 0}
-                  fallback={
-                    <div
-                      style={{
-                        display: "grid",
-                        "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))",
-                        gap: "12px",
-                        "margin-top": "14px",
-                      }}
-                    >
-                      <For each={[1, 2, 3, 4, 5, 6, 7, 8, 9]}>
-                        {() => (
-                          <div class="card" style="padding: 0">
-                            <div class="cardInner" style="display: grid; gap: 10px">
-                              <div style="display: flex; gap: 10px; align-items: center">
-                                <div
-                                  class="skeleton"
-                                  style="width: 38px; height: 38px; border-radius: 14px"
-                                />
-                                <div style="flex: 1; min-width: 0; display: grid; gap: 8px">
-                                  <div
-                                    class="skeleton"
-                                    style="height: 14px; width: 62%; border-radius: 10px"
-                                  />
-                                  <div
-                                    class="skeleton"
-                                    style="height: 12px; width: 42%; border-radius: 10px"
-                                  />
-                                </div>
-                              </div>
-                              <div
-                                class="skeleton"
-                                style="height: 12px; width: 54%; border-radius: 10px"
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </For>
+                <Show when={menuSection() === "CASH"}>
+                  <div class="cashTop">
+                    <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+                      <h2 class="sectionH2">Cash In/Out:</h2>
+                      <div class="statPills">
+                        <span class="statPill">
+                          Entries: <b>{cashEntries().length}</b>
+                        </span>
+                        <span class="statPill">
+                          Partners: <b>{cashPartners().length}</b>
+                        </span>
+                      </div>
                     </div>
-                  }
-                >
-                  <div style="display: grid; gap: 14px; margin-top: 14px">
-                    <Show when={layoutMode() === "CATEGORY"}>
-                      <For each={categoriesPaged()}>
-                        {(cat) => (
-                          <div class="categoryBlock">
-                            <div class="categoryHeaderRow">
-                              <div class="categoryTitle">{cat.category}</div>
-                              <div class="categoryMeta">{cat.merchants.length} merchants</div>
-                            </div>
-                            <div class="categoryGrid">
-                              <For
-                                each={cat.merchants.slice(
-                                  0,
-                                  Math.max(0, visibleMerchantsCount(cat.category)),
-                                )}
-                              >
-                                {(m) => {
-                                  const sum = () =>
-                                    summaryByMerchant().get(m.id) ?? {
-                                      links: 0,
-                                      qris: 0,
-                                      active: 0,
-                                    };
-                                  return (
-                                    <button
-                                      class="merchantCard"
-                                      type="button"
-                                      onClick={() => {
-                                        setSelectedMerchant(m);
-                                        setTab("LINK");
-                                      }}
-                                    >
-                                      <div class="merchantCardInner">
-                                        <div class="merchantCardTop">
-                                          <img
-                                            class="merchantAvatar"
-                                            src={m.pictureUrl ?? defaultMerchantImage(m.name)}
-                                            alt=""
-                                            onError={(e) => {
-                                              const img = e.currentTarget;
-                                              if (img.dataset.fallback === "1") return;
-                                              img.dataset.fallback = "1";
-                                              img.src = defaultMerchantImage(m.name);
-                                            }}
-                                          />
-                                          <div class="merchantMeta">
-                                            <div class="merchantName">{m.name}</div>
-                                            <div class="merchantTagRow">
-                                              <span class="merchantTag">{m.category}</span>
-                                              {sum().active > 0 ? (
-                                                <span class="merchantTag merchantTagActive">
-                                                  Active {sum().active}
-                                                </span>
-                                              ) : null}
-                                            </div>
-                                          </div>
-                                          <div class="merchantChevron">›</div>
-                                        </div>
-                                        <div class="merchantStats">
-                                          <div class="merchantStat">
-                                            <div class="merchantStatLabel">Link/s</div>
-                                            <div class="merchantStatValue">{sum().links}</div>
-                                          </div>
-                                          <div class="merchantStat">
-                                            <div class="merchantStatLabel">QRIS</div>
-                                            <div class="merchantStatValue">{sum().qris}</div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </button>
-                                  );
-                                }}
-                              </For>
-                            </div>
-                            <Show when={cat.merchants.length > visibleMerchantsCount(cat.category)}>
-                              <div style="margin-top: 12px">
-                                <button
-                                  class="btn"
-                                  type="button"
-                                  style="width: 100%"
-                                  onClick={() => loadMoreMerchants(cat.category)}
-                                >
-                                  Load more
-                                </button>
-                              </div>
-                            </Show>
-                          </div>
-                        )}
-                      </For>
 
-                      <Show when={categoryTotalPages() > 1}>
-                        <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap">
+                    <div class="cashFilters">
+                      <div class="field cashFilterField">
+                        <label for="cash_from">From</label>
+                        <DateTimePicker
+                          id="cash_from"
+                          value={cashFrom}
+                          onChange={setCashFrom}
+                          disabled={cashInquiryLoading() || cashLoading()}
+                        />
+                      </div>
+                      <div class="field cashFilterField">
+                        <label for="cash_to">To</label>
+                        <DateTimePicker
+                          id="cash_to"
+                          value={cashTo}
+                          onChange={setCashTo}
+                          disabled={cashInquiryLoading() || cashLoading()}
+                        />
+                      </div>
+                      <div class="field cashFilterField">
+                        <label for="cash_type">Cash Flow Type</label>
+                        <select
+                          id="cash_type"
+                          class="select"
+                          value={cashTypeFilter()}
+                          onChange={(e) =>
+                            setCashTypeFilter(
+                              e.currentTarget.value as "ALL" | "CASH_IN" | "CASH_OUT",
+                            )
+                          }
+                          disabled={cashInquiryLoading() || cashLoading()}
+                        >
+                          <option value="ALL">All</option>
+                          <option value="CASH_IN">Cash In</option>
+                          <option value="CASH_OUT">Cash Out</option>
+                        </select>
+                      </div>
+                      <div class="field cashFilterField">
+                        <label for="cash_merchant">Merchant</label>
+                        <select
+                          id="cash_merchant"
+                          class="select"
+                          value={cashMerchantId()}
+                          onChange={(e) => setCashMerchantId(e.currentTarget.value)}
+                          disabled={cashInquiryLoading() || cashLoading()}
+                        >
+                          <option value="">All</option>
+                          <For each={cashMerchants()}>
+                            {(m) => <option value={m.id}>{m.name}</option>}
+                          </For>
+                        </select>
+                      </div>
+                      <div class="field cashFilterField">
+                        <label for="cash_partner">Partner</label>
+                        <select
+                          id="cash_partner"
+                          class="select"
+                          value={cashPartnerId()}
+                          onChange={(e) => setCashPartnerId(e.currentTarget.value)}
+                          disabled={cashInquiryLoading() || cashLoading()}
+                        >
+                          <option value="">All</option>
+                          <For each={cashPartners()}>
+                            {(p) => <option value={p.id}>{p.name}</option>}
+                          </For>
+                        </select>
+                      </div>
+                      <div class="field cashFilterField">
+                        <label for="cash_search">Search</label>
+                        <div class="inputWithBtn">
+                          <input
+                            id="cash_search"
+                            value={cashSearch()}
+                            onInput={(e) => setCashSearch(e.currentTarget.value)}
+                            placeholder="Search across all fields…"
+                          />
                           <button
                             class="btn"
                             type="button"
-                            disabled={categoryPage() <= 1}
-                            onClick={() => setCategoryPage((p) => Math.max(1, p - 1))}
+                            onClick={() => setCashAdvancedOpen(true)}
+                            disabled={cashInquiryLoading() || cashLoading()}
+                            aria-label="Advanced filters"
+                          >
+                            <span style="display: inline-flex; gap: 10px; align-items: center">
+                              <span style="font-size: 18px; line-height: 1">⌕</span>
+                              <span>Filters</span>
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="cashExports">
+                      <div class="dashMenuLabel" style="margin: 0">
+                        Export
+                      </div>
+                      <div class="exportWrap">
+                        <button
+                          class="btn btnHero exportBtn"
+                          type="button"
+                          disabled={cashLoading() || Boolean(cashExporting())}
+                          aria-haspopup="menu"
+                          aria-expanded={cashExportOpen()}
+                          onClick={() => setCashExportOpen((v) => !v)}
+                        >
+                          <span class="exportBtnInner">
+                            {cashExporting() ? <span class="spinner" /> : null}
+                            {!cashExporting() ? (
+                              <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                              >
+                                <title>Export</title>
+                                <path d="M12 3v12" />
+                                <path d="M7 8l5-5 5 5" />
+                                <path d="M5 21h14a2 2 0 0 0 2-2v-4" />
+                                <path d="M3 15v4a2 2 0 0 0 2 2" />
+                              </svg>
+                            ) : null}
+                            <span class="exportBtnText">
+                              {cashExporting() ? "Exporting…" : "Export"}
+                            </span>
+                            <span class="exportBtnChevron">{cashExportOpen() ? "▴" : "▾"}</span>
+                          </span>
+                        </button>
+                        <Show when={cashExportOpen()}>
+                          <div class="exportMenu" role="menu">
+                            <For each={["pdf", "xlsx", "xml", "json", "csv"] as const}>
+                              {(fmt) => (
+                                <button
+                                  class="exportItem"
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={cashLoading() || Boolean(cashExporting())}
+                                  onClick={() => {
+                                    setCashExportOpen(false);
+                                    void downloadCashExport(fmt);
+                                  }}
+                                >
+                                  <span class="exportItemInner">
+                                    <span class="exportItemIcon" aria-hidden="true">
+                                      {fmt === "pdf" ? (
+                                        <svg
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          stroke-width="2"
+                                        >
+                                          <title>PDF</title>
+                                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                          <path d="M14 2v6h6" />
+                                          <path d="M8 13h8" />
+                                          <path d="M8 17h6" />
+                                        </svg>
+                                      ) : fmt === "xlsx" ? (
+                                        <svg
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          stroke-width="2"
+                                        >
+                                          <title>XLSX</title>
+                                          <path d="M3 3h18v18H3z" />
+                                          <path d="M3 9h18" />
+                                          <path d="M9 21V9" />
+                                        </svg>
+                                      ) : fmt === "xml" ? (
+                                        <svg
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          stroke-width="2"
+                                        >
+                                          <title>XML</title>
+                                          <path d="M8 6L3 12l5 6" />
+                                          <path d="M16 6l5 6-5 6" />
+                                          <path d="M10 19l4-14" />
+                                        </svg>
+                                      ) : fmt === "json" ? (
+                                        <svg
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          stroke-width="2"
+                                        >
+                                          <title>JSON</title>
+                                          <path d="M8 7c0-2 1-3 3-3" />
+                                          <path d="M8 17c0 2 1 3 3 3" />
+                                          <path d="M16 7c0-2-1-3-3-3" />
+                                          <path d="M16 17c0 2-1 3-3 3" />
+                                        </svg>
+                                      ) : (
+                                        <svg
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          stroke-width="2"
+                                        >
+                                          <title>CSV</title>
+                                          <path d="M4 6h16" />
+                                          <path d="M4 12h16" />
+                                          <path d="M4 18h16" />
+                                          <path d="M8 6v12" />
+                                          <path d="M16 6v12" />
+                                        </svg>
+                                      )}
+                                    </span>
+                                    <span class="exportItemLabel" style="text-transform: uppercase">
+                                      {fmt}
+                                    </span>
+                                  </span>
+                                </button>
+                              )}
+                            </For>
+                          </div>
+                        </Show>
+                      </div>
+                    </div>
+
+                    <div class="cashSummary">
+                      <div class="cashSummaryBar">
+                        <div class="dashMenuLabel" style="margin: 0">
+                          Summary
+                        </div>
+                        <div class="cashSummaryControls">
+                          <select
+                            class="select"
+                            value={cashGroup()}
+                            onChange={(e) =>
+                              setCashGroup(
+                                e.currentTarget.value as
+                                  | "datetime"
+                                  | "day"
+                                  | "week"
+                                  | "month"
+                                  | "year"
+                                  | "all",
+                              )
+                            }
+                            disabled={cashLoading()}
+                          >
+                            <option value="datetime">Date/Time</option>
+                            <option value="day">Day</option>
+                            <option value="week">Week</option>
+                            <option value="month">Month</option>
+                            <option value="year">Year</option>
+                            <option value="all">All Time</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="cashSummaryCards">
+                        <div class="cashSummaryCard">
+                          <div class="cashSummaryCardTop">
+                            <div class="cashSummaryIcon cashIconNet">
+                              <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                              >
+                                <title>Net Profit</title>
+                                <path d="M3 12h18" />
+                                <path d="M12 3v18" />
+                              </svg>
+                            </div>
+                            <div>
+                              <div class="cashSummaryLabel">Net Profit</div>
+                              <div class="cashSummaryValue">
+                                {formatIdr(cashSummaryDisplay().netProfit)}
+                              </div>
+                            </div>
+                          </div>
+                          <div class="cashSummarySpark">
+                            <Sparkline
+                              values={cashSummarySeries().netProfit}
+                              stroke="rgba(124, 255, 214, 0.9)"
+                              fill="rgba(124, 255, 214, 0.12)"
+                            />
+                          </div>
+                        </div>
+
+                        <div class="cashSummaryCard">
+                          <div class="cashSummaryCardTop">
+                            <div class="cashSummaryIcon cashIconGross">
+                              <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                              >
+                                <title>Customer Fees</title>
+                                <path d="M4 19V5" />
+                                <path d="M4 19h16" />
+                                <path d="M8 15l3-3 3 2 4-5" />
+                              </svg>
+                            </div>
+                            <div>
+                              <div class="cashSummaryLabel">Customer Fees</div>
+                              <div class="cashSummaryValue">
+                                {formatIdr(cashSummaryDisplay().grossProfit)}
+                              </div>
+                            </div>
+                          </div>
+                          <div class="cashSummarySpark">
+                            <Sparkline
+                              values={cashSummarySeries().grossProfit}
+                              stroke="rgba(157, 124, 255, 0.9)"
+                              fill="rgba(157, 124, 255, 0.12)"
+                            />
+                          </div>
+                        </div>
+
+                        <div class="cashSummaryCard">
+                          <div class="cashSummaryCardTop">
+                            <div class="cashSummaryIcon cashIconIn">
+                              <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                              >
+                                <title>Cash In</title>
+                                <path d="M12 19V5" />
+                                <path d="M5 12l7-7 7 7" />
+                              </svg>
+                            </div>
+                            <div>
+                              <div class="cashSummaryLabel">Cash In</div>
+                              <div class="cashSummaryValue">
+                                {formatIdr(cashSummaryDisplay().cashIn)}
+                              </div>
+                            </div>
+                          </div>
+                          <div class="cashSummarySpark">
+                            <Sparkline
+                              values={cashSummarySeries().cashIn}
+                              stroke="rgba(124, 255, 214, 0.9)"
+                              fill="rgba(124, 255, 214, 0.12)"
+                            />
+                          </div>
+                        </div>
+
+                        <div class="cashSummaryCard">
+                          <div class="cashSummaryCardTop">
+                            <div class="cashSummaryIcon cashIconOut">
+                              <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                              >
+                                <title>Cash Out</title>
+                                <path d="M12 5v14" />
+                                <path d="M19 12l-7 7-7-7" />
+                              </svg>
+                            </div>
+                            <div>
+                              <div class="cashSummaryLabel">Cash Out</div>
+                              <div class="cashSummaryValue">
+                                {formatIdr(cashSummaryDisplay().cashOut)}
+                              </div>
+                            </div>
+                          </div>
+                          <div class="cashSummarySpark">
+                            <Sparkline
+                              values={cashSummarySeries().cashOut}
+                              stroke="rgba(255, 124, 207, 0.9)"
+                              fill="rgba(255, 124, 207, 0.1)"
+                            />
+                          </div>
+                        </div>
+
+                        <div class="cashSummaryCard">
+                          <div class="cashSummaryCardTop">
+                            <div class="cashSummaryIcon cashIconPending">
+                              <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                              >
+                                <title>Pending Funds</title>
+                                <path d="M12 8v5l3 2" />
+                                <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                              </svg>
+                            </div>
+                            <div>
+                              <div class="cashSummaryLabel">Pending Funds</div>
+                              <div class="cashSummaryValue">
+                                {formatIdr(cashSummaryDisplay().pendingFunds)}
+                              </div>
+                            </div>
+                          </div>
+                          <div class="cashSummarySpark">
+                            <Sparkline
+                              values={cashSummarySeries().pendingFunds}
+                              stroke="rgba(255, 255, 255, 0.78)"
+                              fill="rgba(255, 255, 255, 0.06)"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <Show when={cashSummaryRows().length > 1}>
+                        <div class="cashSummaryTableWrap">
+                          <table class="cashTable">
+                            <thead>
+                              <tr>
+                                <th>Bucket</th>
+                                <th>Net</th>
+                                <th>Gross</th>
+                                <th>Cash In</th>
+                                <th>Cash Out</th>
+                                <th>Pending</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <For
+                                each={cashSummaryRows()
+                                  .slice()
+                                  .sort((a, b) => b.bucket.localeCompare(a.bucket))
+                                  .slice(0, 80)}
+                              >
+                                {(r) => (
+                                  <tr>
+                                    <td>{r.bucket.slice(0, 19).replace("T", " ")}</td>
+                                    <td>{formatIdr(r.netProfit)}</td>
+                                    <td>{formatIdr(r.grossProfit)}</td>
+                                    <td>{formatIdr(r.cashIn)}</td>
+                                    <td>{formatIdr(r.cashOut)}</td>
+                                    <td>{formatIdr(r.pendingFunds)}</td>
+                                  </tr>
+                                )}
+                              </For>
+                            </tbody>
+                          </table>
+                        </div>
+                      </Show>
+                    </div>
+
+                    <div class="cashData">
+                      <div class="cashSummaryBar">
+                        <div class="dashMenuLabel" style="margin: 0">
+                          Inquiry
+                        </div>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between">
+                          <div style="color: var(--muted); font-size: 13px">
+                            Page {cashPage()} of {cashTotalPages()} • Showing{" "}
+                            {Math.min(
+                              cashPageSize,
+                              Math.max(0, cashEntriesTotal() - (cashPage() - 1) * cashPageSize),
+                            )}{" "}
+                            of {cashEntriesTotal()}
+                          </div>
+                          <button
+                            class="btn"
+                            type="button"
+                            disabled={cashInquiryLoading() || cashPage() <= 1}
+                            onClick={() => setCashPage((p) => Math.max(1, p - 1))}
                           >
                             Prev
                           </button>
                           <button
                             class="btn"
                             type="button"
-                            disabled={categoryPage() >= categoryTotalPages()}
-                            onClick={() =>
-                              setCategoryPage((p) => Math.min(categoryTotalPages(), p + 1))
-                            }
+                            disabled={cashInquiryLoading() || cashPage() >= cashTotalPages()}
+                            onClick={() => setCashPage((p) => Math.min(cashTotalPages(), p + 1))}
                           >
                             Next
                           </button>
                         </div>
+                      </div>
+                      <Show
+                        when={cashEntriesTotal() > 0 || cashInquiryLoading()}
+                        fallback={
+                          <div class="emptyCenter" style="margin-top: 12px">
+                            <div class="emptyLogo">CY</div>
+                            <div class="emptyTitle">No cash records yet</div>
+                            <div class="emptyText">Add a cash record and it’ll show up here.</div>
+                          </div>
+                        }
+                      >
+                        <Show
+                          when={!cashInquiryLoading()}
+                          fallback={
+                            <div class="cashSummaryTableWrap cashInquiryScroll">
+                              <div class="skeleton" style="height: 260px" />
+                            </div>
+                          }
+                        >
+                          <div class="cashSummaryTableWrap cashInquiryScroll">
+                            <table class="cashTable">
+                              <thead>
+                                <tr>
+                                  <th>Date</th>
+                                  <th>Type</th>
+                                  <th>Status</th>
+                                  <th>Order</th>
+                                  <th>Partner</th>
+                                  <th>Merchant</th>
+                                  <th>Base</th>
+                                  <th>Customer Fee</th>
+                                  <th>Merchant Fee</th>
+                                  <th>Net</th>
+                                  <th>From Merchant</th>
+                                  <th>To Customer</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <For each={cashEntries()}>
+                                  {(e) => (
+                                    <tr class="cashRowClickable" onClick={() => openCashEdit(e)}>
+                                      <td>{e.transactionDate.slice(0, 19).replace("T", " ")}</td>
+                                      <td>{e.cashType === "CASH_IN" ? "Cash In" : "Cash Out"}</td>
+                                      <td>{formatCashRecordStatus(e.status)}</td>
+                                      <td>{e.orderNumber}</td>
+                                      <td>{e.partner.name}</td>
+                                      <td>{e.merchant.name}</td>
+                                      <td>{formatIdr(e.totalAmount)}</td>
+                                      <td>{formatIdr(e.grossFeeAmount)}</td>
+                                      <td>{formatIdr(e.merchantFeeAmount)}</td>
+                                      <td>{formatIdr(e.netProfit)}</td>
+                                      <td>{formatIdr(e.receiveFromMerchantAmount)}</td>
+                                      <td>{formatIdr(e.payToCustomerAmount)}</td>
+                                    </tr>
+                                  )}
+                                </For>
+                              </tbody>
+                            </table>
+                          </div>
+                        </Show>
                       </Show>
-                    </Show>
+                    </div>
+                  </div>
+                </Show>
 
-                    <Show when={layoutMode() === "MERCHANT"}>
+                <Show when={menuSection() === "PAYMENTS"}>
+                  <Show when={!readOnly() && shareUrl()}>
+                    <div style="margin-top: 12px; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap">
+                      <h2 class="sectionH2">Share:</h2>
+                      <div class="segmented" style="margin-left: auto">
+                        <button
+                          class="segBtn"
+                          type="button"
+                          onClick={() => {
+                            const url = shareUrl();
+                            if (!url) return;
+                            openUrl("share-open", url);
+                          }}
+                        >
+                          <span style="display: inline-flex; gap: 10px; align-items: center">
+                            {openItemId() === "share-open" ? <span class="spinner" /> : null}
+                            <span>Open</span>
+                          </span>
+                        </button>
+                        <button
+                          class="segBtn"
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const url = shareUrl();
+                              if (!url) return;
+                              await navigator.clipboard.writeText(url);
+                              showToast("success", "Link copied.");
+                            } catch {
+                              showToast("error", "COPY_FAILED");
+                            }
+                          }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+                  </Show>
+
+                  <Show
+                    when={!loading() || paymentMerchants().length > 0}
+                    fallback={
                       <div
                         style={{
                           display: "grid",
                           "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))",
                           gap: "12px",
+                          "margin-top": "14px",
                         }}
                       >
-                        <For each={merchantsPagedForLayout()}>
-                          {(m) => {
-                            const sum = () =>
-                              summaryByMerchant().get(m.id) ?? { links: 0, qris: 0, active: 0 };
-                            return (
-                              <button
-                                class="merchantCard"
-                                type="button"
-                                onClick={() => {
-                                  setSelectedMerchant(m);
-                                  setTab("LINK");
-                                }}
-                              >
-                                <div class="merchantCardInner">
-                                  <div class="merchantCardTop">
-                                    <img
-                                      class="merchantAvatar"
-                                      src={m.pictureUrl ?? defaultMerchantImage(m.name)}
-                                      alt=""
-                                      onError={(e) => {
-                                        const img = e.currentTarget;
-                                        if (img.dataset.fallback === "1") return;
-                                        img.dataset.fallback = "1";
-                                        img.src = defaultMerchantImage(m.name);
-                                      }}
+                        <For each={[1, 2, 3, 4, 5, 6, 7, 8, 9]}>
+                          {() => (
+                            <div class="card" style="padding: 0">
+                              <div class="cardInner" style="display: grid; gap: 10px">
+                                <div style="display: flex; gap: 10px; align-items: center">
+                                  <div
+                                    class="skeleton"
+                                    style="width: 38px; height: 38px; border-radius: 14px"
+                                  />
+                                  <div style="flex: 1; min-width: 0; display: grid; gap: 8px">
+                                    <div
+                                      class="skeleton"
+                                      style="height: 14px; width: 62%; border-radius: 10px"
                                     />
-                                    <div class="merchantMeta">
-                                      <div class="merchantName">{m.name}</div>
-                                      <div class="merchantTagRow">
-                                        <span class="merchantTag">{m.category}</span>
-                                        {sum().active > 0 ? (
-                                          <span class="merchantTag merchantTagActive">
-                                            Active {sum().active}
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                    <div class="merchantChevron">›</div>
-                                  </div>
-                                  <div class="merchantStats">
-                                    <div class="merchantStat">
-                                      <div class="merchantStatLabel">Link/s</div>
-                                      <div class="merchantStatValue">{sum().links}</div>
-                                    </div>
-                                    <div class="merchantStat">
-                                      <div class="merchantStatLabel">QRIS</div>
-                                      <div class="merchantStatValue">{sum().qris}</div>
-                                    </div>
+                                    <div
+                                      class="skeleton"
+                                      style="height: 12px; width: 42%; border-radius: 10px"
+                                    />
                                   </div>
                                 </div>
-                              </button>
-                            );
-                          }}
+                                <div
+                                  class="skeleton"
+                                  style="height: 12px; width: 54%; border-radius: 10px"
+                                />
+                              </div>
+                            </div>
+                          )}
                         </For>
                       </div>
-
-                      <Show when={merchantLayoutTotalPages() > 1}>
-                        <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap">
-                          <button
-                            class="btn"
-                            type="button"
-                            disabled={merchantLayoutPage() <= 1}
-                            onClick={() => setMerchantLayoutPage((p) => Math.max(1, p - 1))}
-                          >
-                            Prev
-                          </button>
-                          <button
-                            class="btn"
-                            type="button"
-                            disabled={merchantLayoutPage() >= merchantLayoutTotalPages()}
-                            onClick={() =>
-                              setMerchantLayoutPage((p) =>
-                                Math.min(merchantLayoutTotalPages(), p + 1),
-                              )
-                            }
-                          >
-                            Next
-                          </button>
-                        </div>
-                      </Show>
-                    </Show>
-
-                    <Show when={layoutMode() === "LINK" || layoutMode() === "QRIS"}>
-                      <Show
-                        when={itemsByLayout().length > 0}
-                        fallback={
-                          <div class="emptyCenter">
-                            <div class="emptyLogo">CY</div>
-                            <div class="emptyTitle">No payments yet</div>
-                            <div class="emptyText">
-                              Drop a payment link or QRIS and it’ll show up here.
-                            </div>
-                          </div>
-                        }
-                      >
-                        <div
-                          style={{
-                            display: "grid",
-                            gap: "12px",
-                            "grid-template-columns":
-                              layoutMode() === "QRIS"
-                                ? "repeat(auto-fit, minmax(260px, 1fr))"
-                                : "repeat(auto-fit, minmax(220px, 1fr))",
-                          }}
-                        >
-                          <For each={itemsPagedForLayout()}>
-                            {(it) => (
-                              <div style="border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 12px; display: grid; gap: 10px">
-                                <div style="display: flex; gap: 10px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
-                                  <div style="color: rgba(250,250,255,0.86); font-size: 16px; font-weight: 750; letter-spacing: -0.02em">
-                                    {formatIdr(it.totalAmount)}
-                                  </div>
-                                  <div style="color: rgba(250,250,255,0.62); font-size: 13px">
-                                    {formatCountdown(it.expiresAt)}
-                                  </div>
-                                </div>
-                                <div style="color: rgba(250,250,255,0.68); font-size: 13px; line-height: 1.4">
-                                  {it.merchant?.name ?? "—"}
-                                </div>
-                                <Show when={it.kind === "LINK" && it.paymentUrl}>
-                                  <button
-                                    class="btn btnWide"
-                                    type="button"
-                                    disabled={Boolean(action())}
-                                    onClick={() => {
-                                      const url = it.paymentUrl;
-                                      if (!url) return;
-                                      openUrl(`${it.id}:link`, url);
-                                    }}
-                                  >
-                                    <span style="display: inline-flex; gap: 10px; align-items: center">
-                                      {openItemId() === `${it.id}:link` ? (
-                                        <span class="spinner" />
-                                      ) : null}
-                                      <span>Open</span>
-                                    </span>
-                                  </button>
-                                </Show>
-                                <Show when={it.kind === "QRIS" && it.qrisUrl}>
-                                  <img
-                                    src={it.qrisUrl ?? defaultQrisImage(it.merchant?.name ?? "")}
-                                    alt="QRIS"
-                                    style="width: 100%; max-height: 420px; object-fit: contain; border-radius: 16px; border: 1px solid rgba(255,255,255,0.12)"
-                                    onError={(e) => {
-                                      const img = e.currentTarget;
-                                      if (img.dataset.fallback === "1") return;
-                                      img.dataset.fallback = "1";
-                                      img.src = defaultQrisImage(it.merchant?.name ?? "");
-                                    }}
-                                  />
-                                  <button
-                                    class="btn btnWide"
-                                    type="button"
-                                    disabled={Boolean(action())}
-                                    onClick={() => {
-                                      const url = it.qrisUrl;
-                                      if (!url) return;
-                                      openUrl(`${it.id}:qris`, url);
-                                    }}
-                                  >
-                                    <span style="display: inline-flex; gap: 10px; align-items: center">
-                                      {openItemId() === `${it.id}:qris` ? (
-                                        <span class="spinner" />
-                                      ) : null}
-                                      <span>Open</span>
-                                    </span>
-                                  </button>
-                                </Show>
-                                <Show when={!readOnly() && it.status === "ACTIVE"}>
-                                  <button
-                                    class="btn btnWide"
-                                    type="button"
-                                    disabled={Boolean(action())}
-                                    onClick={() => void deactivate(it.id)}
-                                  >
-                                    <span style="display: inline-flex; gap: 10px; align-items: center">
-                                      {isAction("deactivate", it.id) ? (
-                                        <span class="spinner" />
-                                      ) : null}
-                                      <span>
-                                        {isAction("deactivate", it.id)
-                                          ? "Taking Down…"
-                                          : "Take Down"}
-                                      </span>
-                                    </span>
-                                  </button>
-                                </Show>
+                    }
+                  >
+                    <div style="display: grid; gap: 14px; margin-top: 14px">
+                      <Show when={layoutMode() === "CATEGORY"}>
+                        <For each={categoriesPaged()}>
+                          {(cat) => (
+                            <div class="categoryBlock">
+                              <div class="categoryHeaderRow">
+                                <div class="categoryTitle">{cat.category}</div>
+                                <div class="categoryMeta">{cat.merchants.length} merchants</div>
                               </div>
-                            )}
-                          </For>
-                        </div>
+                              <div class="categoryGrid">
+                                <For
+                                  each={cat.merchants.slice(
+                                    0,
+                                    Math.max(0, visibleMerchantsCount(cat.category)),
+                                  )}
+                                >
+                                  {(m) => {
+                                    const sum = () =>
+                                      summaryByMerchant().get(m.id) ?? {
+                                        links: 0,
+                                        qris: 0,
+                                        active: 0,
+                                      };
+                                    return (
+                                      <button
+                                        class="merchantCard"
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedMerchant(m);
+                                          setTab("LINK");
+                                        }}
+                                      >
+                                        <div class="merchantCardInner">
+                                          <div class="merchantCardTop">
+                                            <img
+                                              class="merchantAvatar"
+                                              src={m.pictureUrl ?? defaultMerchantImage(m.name)}
+                                              alt=""
+                                              onError={(e) => {
+                                                const img = e.currentTarget;
+                                                if (img.dataset.fallback === "1") return;
+                                                img.dataset.fallback = "1";
+                                                img.src = defaultMerchantImage(m.name);
+                                              }}
+                                            />
+                                            <div class="merchantMeta">
+                                              <div class="merchantName">{m.name}</div>
+                                              <div class="merchantTagRow">
+                                                <span class="merchantTag">{m.category}</span>
+                                                {sum().active > 0 ? (
+                                                  <span class="merchantTag merchantTagActive">
+                                                    Active {sum().active}
+                                                  </span>
+                                                ) : null}
+                                              </div>
+                                            </div>
+                                            <div class="merchantChevron">›</div>
+                                          </div>
+                                          <div class="merchantStats">
+                                            <div class="merchantStat">
+                                              <div class="merchantStatLabel">Link/s</div>
+                                              <div class="merchantStatValue">{sum().links}</div>
+                                            </div>
+                                            <div class="merchantStat">
+                                              <div class="merchantStatLabel">QRIS</div>
+                                              <div class="merchantStatValue">{sum().qris}</div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </button>
+                                    );
+                                  }}
+                                </For>
+                              </div>
+                              <Show
+                                when={cat.merchants.length > visibleMerchantsCount(cat.category)}
+                              >
+                                <div style="margin-top: 12px">
+                                  <button
+                                    class="btn"
+                                    type="button"
+                                    style="width: 100%"
+                                    onClick={() => loadMoreMerchants(cat.category)}
+                                  >
+                                    Load more
+                                  </button>
+                                </div>
+                              </Show>
+                            </div>
+                          )}
+                        </For>
 
-                        <Show when={itemLayoutTotalPages() > 1}>
+                        <Show when={categoryTotalPages() > 1}>
                           <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap">
                             <button
                               class="btn"
                               type="button"
-                              disabled={itemLayoutPage() <= 1}
-                              onClick={() => setItemLayoutPage((p) => Math.max(1, p - 1))}
+                              disabled={categoryPage() <= 1}
+                              onClick={() => setCategoryPage((p) => Math.max(1, p - 1))}
                             >
                               Prev
                             </button>
                             <button
                               class="btn"
                               type="button"
-                              disabled={itemLayoutPage() >= itemLayoutTotalPages()}
+                              disabled={categoryPage() >= categoryTotalPages()}
                               onClick={() =>
-                                setItemLayoutPage((p) => Math.min(itemLayoutTotalPages(), p + 1))
+                                setCategoryPage((p) => Math.min(categoryTotalPages(), p + 1))
                               }
                             >
                               Next
@@ -1398,17 +2520,242 @@ export default function Dashboard(props: DashboardProps) {
                           </div>
                         </Show>
                       </Show>
-                    </Show>
-                  </div>
+
+                      <Show when={layoutMode() === "MERCHANT"}>
+                        <div
+                          style={{
+                            display: "grid",
+                            "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))",
+                            gap: "12px",
+                          }}
+                        >
+                          <For each={merchantsPagedForLayout()}>
+                            {(m) => {
+                              const sum = () =>
+                                summaryByMerchant().get(m.id) ?? { links: 0, qris: 0, active: 0 };
+                              return (
+                                <button
+                                  class="merchantCard"
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedMerchant(m);
+                                    setTab("LINK");
+                                  }}
+                                >
+                                  <div class="merchantCardInner">
+                                    <div class="merchantCardTop">
+                                      <img
+                                        class="merchantAvatar"
+                                        src={m.pictureUrl ?? defaultMerchantImage(m.name)}
+                                        alt=""
+                                        onError={(e) => {
+                                          const img = e.currentTarget;
+                                          if (img.dataset.fallback === "1") return;
+                                          img.dataset.fallback = "1";
+                                          img.src = defaultMerchantImage(m.name);
+                                        }}
+                                      />
+                                      <div class="merchantMeta">
+                                        <div class="merchantName">{m.name}</div>
+                                        <div class="merchantTagRow">
+                                          <span class="merchantTag">{m.category}</span>
+                                          {sum().active > 0 ? (
+                                            <span class="merchantTag merchantTagActive">
+                                              Active {sum().active}
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                      </div>
+                                      <div class="merchantChevron">›</div>
+                                    </div>
+                                    <div class="merchantStats">
+                                      <div class="merchantStat">
+                                        <div class="merchantStatLabel">Link/s</div>
+                                        <div class="merchantStatValue">{sum().links}</div>
+                                      </div>
+                                      <div class="merchantStat">
+                                        <div class="merchantStatLabel">QRIS</div>
+                                        <div class="merchantStatValue">{sum().qris}</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </button>
+                              );
+                            }}
+                          </For>
+                        </div>
+
+                        <Show when={merchantLayoutTotalPages() > 1}>
+                          <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap">
+                            <button
+                              class="btn"
+                              type="button"
+                              disabled={merchantLayoutPage() <= 1}
+                              onClick={() => setMerchantLayoutPage((p) => Math.max(1, p - 1))}
+                            >
+                              Prev
+                            </button>
+                            <button
+                              class="btn"
+                              type="button"
+                              disabled={merchantLayoutPage() >= merchantLayoutTotalPages()}
+                              onClick={() =>
+                                setMerchantLayoutPage((p) =>
+                                  Math.min(merchantLayoutTotalPages(), p + 1),
+                                )
+                              }
+                            >
+                              Next
+                            </button>
+                          </div>
+                        </Show>
+                      </Show>
+
+                      <Show when={layoutMode() === "LINK" || layoutMode() === "QRIS"}>
+                        <Show
+                          when={itemsByLayout().length > 0}
+                          fallback={
+                            <div class="emptyCenter">
+                              <div class="emptyLogo">CY</div>
+                              <div class="emptyTitle">No payments yet</div>
+                              <div class="emptyText">
+                                Drop a payment link or QRIS and it’ll show up here.
+                              </div>
+                            </div>
+                          }
+                        >
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: "12px",
+                              "grid-template-columns":
+                                layoutMode() === "QRIS"
+                                  ? "repeat(auto-fit, minmax(260px, 1fr))"
+                                  : "repeat(auto-fit, minmax(220px, 1fr))",
+                            }}
+                          >
+                            <For each={itemsPagedForLayout()}>
+                              {(it) => (
+                                <div style="border: 1px solid var(--line); border-radius: 18px; padding: 12px; display: grid; gap: 10px">
+                                  <div style="display: flex; gap: 10px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
+                                    <div style="color: var(--ink); font-size: 16px; font-weight: 750; letter-spacing: -0.02em">
+                                      {formatIdr(it.totalAmount)}
+                                    </div>
+                                    <div style="color: var(--muted); font-size: 13px">
+                                      {formatCountdown(it.expiresAt)}
+                                    </div>
+                                  </div>
+                                  <div style="color: var(--muted); font-size: 13px; line-height: 1.4">
+                                    {it.merchant?.name ?? "—"}
+                                  </div>
+                                  <Show when={it.kind === "LINK" && it.paymentUrl}>
+                                    <button
+                                      class="btn btnWide"
+                                      type="button"
+                                      disabled={Boolean(action())}
+                                      onClick={() => {
+                                        const url = it.paymentUrl;
+                                        if (!url) return;
+                                        openUrl(`${it.id}:link`, url);
+                                      }}
+                                    >
+                                      <span style="display: inline-flex; gap: 10px; align-items: center">
+                                        {openItemId() === `${it.id}:link` ? (
+                                          <span class="spinner" />
+                                        ) : null}
+                                        <span>Open</span>
+                                      </span>
+                                    </button>
+                                  </Show>
+                                  <Show when={it.kind === "QRIS" && it.qrisUrl}>
+                                    <img
+                                      src={it.qrisUrl ?? defaultQrisImage(it.merchant?.name ?? "")}
+                                      alt="QRIS"
+                                      style="width: 100%; max-height: 420px; object-fit: contain; border-radius: 16px; border: 1px solid var(--line)"
+                                      onError={(e) => {
+                                        const img = e.currentTarget;
+                                        if (img.dataset.fallback === "1") return;
+                                        img.dataset.fallback = "1";
+                                        img.src = defaultQrisImage(it.merchant?.name ?? "");
+                                      }}
+                                    />
+                                    <button
+                                      class="btn btnWide"
+                                      type="button"
+                                      disabled={Boolean(action())}
+                                      onClick={() => {
+                                        const url = it.qrisUrl;
+                                        if (!url) return;
+                                        openUrl(`${it.id}:qris`, url);
+                                      }}
+                                    >
+                                      <span style="display: inline-flex; gap: 10px; align-items: center">
+                                        {openItemId() === `${it.id}:qris` ? (
+                                          <span class="spinner" />
+                                        ) : null}
+                                        <span>Open</span>
+                                      </span>
+                                    </button>
+                                  </Show>
+                                  <Show when={!readOnly() && it.status === "ACTIVE"}>
+                                    <button
+                                      class="btn btnWide"
+                                      type="button"
+                                      disabled={Boolean(action())}
+                                      onClick={() => void deactivate(it.id)}
+                                    >
+                                      <span style="display: inline-flex; gap: 10px; align-items: center">
+                                        {isAction("deactivate", it.id) ? (
+                                          <span class="spinner" />
+                                        ) : null}
+                                        <span>
+                                          {isAction("deactivate", it.id)
+                                            ? "Taking Down…"
+                                            : "Take Down"}
+                                        </span>
+                                      </span>
+                                    </button>
+                                  </Show>
+                                </div>
+                              )}
+                            </For>
+                          </div>
+
+                          <Show when={itemLayoutTotalPages() > 1}>
+                            <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap">
+                              <button
+                                class="btn"
+                                type="button"
+                                disabled={itemLayoutPage() <= 1}
+                                onClick={() => setItemLayoutPage((p) => Math.max(1, p - 1))}
+                              >
+                                Prev
+                              </button>
+                              <button
+                                class="btn"
+                                type="button"
+                                disabled={itemLayoutPage() >= itemLayoutTotalPages()}
+                                onClick={() =>
+                                  setItemLayoutPage((p) => Math.min(itemLayoutTotalPages(), p + 1))
+                                }
+                              >
+                                Next
+                              </button>
+                            </div>
+                          </Show>
+                        </Show>
+                      </Show>
+                    </div>
+                  </Show>
                 </Show>
               </div>
             </div>
 
-            <Show when={!readOnly()}>
+            <Show when={!readOnly() && menuSection() === "PAYMENTS"}>
               <div style="grid-column: span 4; display: grid; gap: 16px">
                 <div class="card">
                   <div class="cardInner" style="display: grid; gap: 12px">
-                    <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(250,250,255,0.62)">
+                    <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted)">
                       Add Category
                     </div>
                     <div class="field">
@@ -1421,7 +2768,7 @@ export default function Dashboard(props: DashboardProps) {
                         value={newCategoryName()}
                         onInput={(e) => setNewCategoryName(e.currentTarget.value)}
                         onBlur={() => setTouchedCategoryName(true)}
-                        placeholder="e.g. Food"
+                        placeholder="e.g. E-commerce"
                       />
                       <Show when={categoryNameError()}>
                         <div class="fieldError">{categoryNameError()}</div>
@@ -1448,7 +2795,7 @@ export default function Dashboard(props: DashboardProps) {
                 <Show when={hasAnyCategories()}>
                   <div class="card">
                     <div class="cardInner" style="display: grid; gap: 12px">
-                      <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(250,250,255,0.62)">
+                      <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted)">
                         Add Merchant
                       </div>
                       <div class="field">
@@ -1461,6 +2808,7 @@ export default function Dashboard(props: DashboardProps) {
                           value={newMerchantName()}
                           onInput={(e) => setNewMerchantName(e.currentTarget.value)}
                           onBlur={() => setTouchedMerchantName(true)}
+                          placeholder="e.g. Shopee"
                         />
                         <Show when={merchantNameError()}>
                           <div class="fieldError">{merchantNameError()}</div>
@@ -1533,7 +2881,7 @@ export default function Dashboard(props: DashboardProps) {
                 <Show when={hasAnyMerchants()}>
                   <div class="card">
                     <div class="cardInner" style="display: grid; gap: 12px">
-                      <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(250,250,255,0.62)">
+                      <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted)">
                         Add Payment Link/QRIS
                       </div>
                       <div style="display: flex; gap: 10px; flex-wrap: wrap">
@@ -1557,7 +2905,7 @@ export default function Dashboard(props: DashboardProps) {
                           Merchant<span class="fieldReq">*</span>
                         </label>
                         <Show
-                          when={!loading() || merchants().length > 0}
+                          when={!loading() || paymentMerchants().length > 0}
                           fallback={<div class="skeleton selectSkeleton" />}
                         >
                           <select
@@ -1569,7 +2917,7 @@ export default function Dashboard(props: DashboardProps) {
                             onChange={(e) => setPostMerchantId(e.currentTarget.value)}
                             onBlur={() => setTouchedPaymentMerchant(true)}
                           >
-                            <For each={merchants()}>
+                            <For each={paymentMerchants()}>
                               {(m) => <option value={m.id}>{m.name}</option>}
                             </For>
                           </select>
@@ -1666,7 +3014,600 @@ export default function Dashboard(props: DashboardProps) {
                 </Show>
               </div>
             </Show>
+
+            <Show when={!readOnly() && menuSection() === "CASH"}>
+              <div class="cashSide">
+                <div class="card">
+                  <div class="cardInner" style="display: grid; gap: 12px">
+                    <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted)">
+                      Register Merchant
+                    </div>
+                    <div class="field">
+                      <label for="cash_add_merchant">
+                        Merchant Name<span class="fieldReq">*</span>
+                      </label>
+                      <input
+                        id="cash_add_merchant"
+                        value={newCashMerchantName()}
+                        onInput={(e) => setNewCashMerchantName(e.currentTarget.value)}
+                        placeholder="e.g. Cuan Yuk!"
+                      />
+                    </div>
+                    <button
+                      class="btn btnPrimary"
+                      type="button"
+                      disabled={newCashMerchantName().trim().length < 2 || Boolean(cashMutating())}
+                      onClick={() => void addCashMerchant()}
+                    >
+                      <span style="display: inline-flex; gap: 10px; align-items: center">
+                        {cashMutating() === "add_merchant" ? <span class="spinner" /> : null}
+                        <span>{cashMutating() === "add_merchant" ? "Submitting…" : "Submit"}</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                <Show when={showCashPartnerSection()}>
+                  <div class="card">
+                    <div class="cardInner" style="display: grid; gap: 12px">
+                      <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted)">
+                        Register Partner
+                      </div>
+                      <div class="field">
+                        <label for="cash_add_partner">
+                          Partner Name<span class="fieldReq">*</span>
+                        </label>
+                        <input
+                          id="cash_add_partner"
+                          value={newCashPartnerName()}
+                          onInput={(e) => setNewCashPartnerName(e.currentTarget.value)}
+                          placeholder="e.g. John Doe"
+                        />
+                      </div>
+                      <button
+                        class="btn btnPrimary"
+                        type="button"
+                        disabled={newCashPartnerName().trim().length < 2 || Boolean(cashMutating())}
+                        onClick={() => void addCashPartner()}
+                      >
+                        <span style="display: inline-flex; gap: 10px; align-items: center">
+                          {cashMutating() === "add_partner" ? <span class="spinner" /> : null}
+                          <span>{cashMutating() === "add_partner" ? "Submitting…" : "Submit"}</span>
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </Show>
+
+                <Show when={showCashRecordSection()}>
+                  <div class="card">
+                    <div class="cardInner" style="display: grid; gap: 12px">
+                      <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted)">
+                        Add Cash Record
+                      </div>
+
+                      <div class="field">
+                        <label for="cash_tx_type">
+                          Cash Flow Type<span class="fieldReq">*</span>
+                        </label>
+                        <select
+                          id="cash_tx_type"
+                          class="select"
+                          value={cashTxCashType()}
+                          onChange={(e) =>
+                            setCashTxCashType(e.currentTarget.value as "CASH_IN" | "CASH_OUT")
+                          }
+                        >
+                          <option value="CASH_IN">Cash In</option>
+                          <option value="CASH_OUT">Cash Out</option>
+                        </select>
+                      </div>
+
+                      <div class="field">
+                        <label for="cash_tx_status">
+                          Status<span class="fieldReq">*</span>
+                        </label>
+                        <select
+                          id="cash_tx_status"
+                          class="select"
+                          value={cashTxStatus()}
+                          onChange={(e) =>
+                            setCashTxStatus(e.currentTarget.value as "PENDING" | "ACTIVE")
+                          }
+                        >
+                          <option value="PENDING">Pending</option>
+                          <option value="ACTIVE">Success</option>
+                        </select>
+                      </div>
+
+                      <div class="field">
+                        <label for="cash_tx_date">
+                          Transaction Date<span class="fieldReq">*</span>
+                        </label>
+                        <DateTimePicker
+                          id="cash_tx_date"
+                          value={cashTxDate}
+                          onChange={setCashTxDate}
+                          disabled={Boolean(cashMutating())}
+                        />
+                      </div>
+
+                      <div class="field">
+                        <label for="cash_tx_order">
+                          Order Number<span class="fieldReq">*</span>
+                        </label>
+                        <input
+                          id="cash_tx_order"
+                          value={cashTxOrderNumber()}
+                          onInput={(e) => setCashTxOrderNumber(e.currentTarget.value)}
+                          placeholder="e.g. ORD-2026-0001"
+                        />
+                      </div>
+
+                      <div class="field">
+                        <label for="cash_tx_total">
+                          Base Total (IDR)<span class="fieldReq">*</span>
+                        </label>
+                        <input
+                          id="cash_tx_total"
+                          inputmode="numeric"
+                          value={cashTxTotalAmount()}
+                          onInput={(e) => setCashTxTotalAmount(e.currentTarget.value)}
+                          placeholder="e.g. 10000000"
+                        />
+                      </div>
+
+                      <div class="field">
+                        <label for="cash_tx_merchant">
+                          Merchant<span class="fieldReq">*</span>
+                        </label>
+                        <select
+                          id="cash_tx_merchant"
+                          class="select"
+                          value={cashTxMerchantId()}
+                          onChange={(e) => setCashTxMerchantId(e.currentTarget.value)}
+                          disabled={cashMerchants().length === 0}
+                        >
+                          <For each={cashMerchants()}>
+                            {(m) => <option value={m.id}>{m.name}</option>}
+                          </For>
+                        </select>
+                      </div>
+
+                      <div class="field">
+                        <label for="cash_tx_partner">
+                          Partner<span class="fieldReq">*</span>
+                        </label>
+                        <select
+                          id="cash_tx_partner"
+                          class="select"
+                          value={cashTxPartnerId()}
+                          onChange={(e) => setCashTxPartnerId(e.currentTarget.value)}
+                          disabled={cashPartners().length === 0}
+                        >
+                          <For each={cashPartners()}>
+                            {(p) => <option value={p.id}>{p.name}</option>}
+                          </For>
+                        </select>
+                      </div>
+
+                      <div class="field">
+                        <label for="cash_tx_customer_fee">
+                          Customer Fee (% of base)<span class="fieldReq">*</span>
+                        </label>
+                        <div class="suffixField">
+                          <input
+                            id="cash_tx_customer_fee"
+                            type="number"
+                            inputmode="decimal"
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            value={cashTxCustomerFeePercent()}
+                            onInput={(e) => setCashTxCustomerFeePercent(e.currentTarget.value)}
+                            placeholder="10"
+                          />
+                          <span class="suffixFieldText">%</span>
+                        </div>
+                      </div>
+                      <div class="field">
+                        <label for="cash_tx_merchant_fee">
+                          Merchant Fee (% of base)<span class="fieldReq">*</span>
+                        </label>
+                        <div class="suffixField">
+                          <input
+                            id="cash_tx_merchant_fee"
+                            type="number"
+                            inputmode="decimal"
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            value={cashTxMerchantFeePercent()}
+                            onInput={(e) => setCashTxMerchantFeePercent(e.currentTarget.value)}
+                            placeholder="10"
+                          />
+                          <span class="suffixFieldText">%</span>
+                        </div>
+                      </div>
+
+                      <div class="cashCalcNote">Fee breakdown (calculated from Base Total)</div>
+                      <div class="cashBreakdownGrid">
+                        <div class="cashCalcCard">
+                          <div class="cashCalcLabel">Base Total</div>
+                          <div class="cashCalcValue">{formatMaybeIdr(cashBaseAmountValue())}</div>
+                        </div>
+                        <div class="cashCalcCard">
+                          <div class="cashCalcLabel">Merchant Fee %</div>
+                          <div class="cashCalcValue">
+                            {formatMaybePercent(cashMerchantFeePercentValue())}
+                          </div>
+                        </div>
+                        <div class="cashCalcCard">
+                          <div class="cashCalcLabel">Merchant Fee (IDR)</div>
+                          <div class="cashCalcValue">{formatMaybeIdr(cashMerchantFeeAmount())}</div>
+                        </div>
+                        <div class="cashCalcCard">
+                          <div class="cashCalcLabel">From Merchant</div>
+                          <div class="cashCalcValue">
+                            {formatMaybeIdr(cashReceiveFromMerchantAmount())}
+                          </div>
+                        </div>
+                        <div class="cashCalcCard">
+                          <div class="cashCalcLabel">Customer Fee %</div>
+                          <div class="cashCalcValue">
+                            {formatMaybePercent(cashCustomerFeePercentValue())}
+                          </div>
+                        </div>
+                        <div class="cashCalcCard">
+                          <div class="cashCalcLabel">Customer Fee (IDR)</div>
+                          <div class="cashCalcValue">{formatMaybeIdr(cashGrossFeeAmount())}</div>
+                        </div>
+                        <div class="cashCalcCard">
+                          <div class="cashCalcLabel">To Customer</div>
+                          <div class="cashCalcValue">
+                            {formatMaybeIdr(cashPayToCustomerAmount())}
+                          </div>
+                        </div>
+                        <div class="cashCalcCard">
+                          <div class="cashCalcLabel">Profit</div>
+                          <div class="cashCalcValue">{formatMaybeIdr(cashNetProfitAmount())}</div>
+                        </div>
+                      </div>
+                      <Show when={cashNetProfitIsNegative()}>
+                        <div class="fieldError">
+                          Net profit is negative (merchant fee is larger than total fees).
+                        </div>
+                      </Show>
+
+                      <button
+                        class="btn btnPrimary"
+                        type="button"
+                        disabled={Boolean(cashMutating())}
+                        onClick={() => void addCashTransaction()}
+                      >
+                        <span style="display: inline-flex; gap: 10px; align-items: center">
+                          {cashMutating() === "add_tx" ? <span class="spinner" /> : null}
+                          <span>{cashMutating() === "add_tx" ? "Submitting…" : "Submit"}</span>
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </Show>
+              </div>
+            </Show>
           </div>
+
+          <Modal
+            open={cashEditOpen()}
+            onClose={() => {
+              setCashEditOpen(false);
+              setCashEditId(null);
+            }}
+          >
+            <div style="display: grid; gap: 14px">
+              <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+                <div>
+                  <div style="font-weight: 800; letter-spacing: -0.02em; font-size: 20px">
+                    Edit Cash Record
+                  </div>
+                  <div style="color: var(--muted); font-size: 13px; margin-top: 2px">
+                    Update the selected cash transaction.
+                  </div>
+                </div>
+                <button
+                  class="btn"
+                  type="button"
+                  onClick={() => {
+                    setCashEditOpen(false);
+                    setCashEditId(null);
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+
+              <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+                <div class="field" style="margin: 0">
+                  <label for="cash_edit_type">
+                    Cash Flow Type<span class="fieldReq">*</span>
+                  </label>
+                  <select
+                    id="cash_edit_type"
+                    class="select"
+                    value={cashEditCashType()}
+                    onChange={(e) =>
+                      setCashEditCashType(e.currentTarget.value as "CASH_IN" | "CASH_OUT")
+                    }
+                    disabled={Boolean(cashMutating())}
+                  >
+                    <option value="CASH_IN">Cash In</option>
+                    <option value="CASH_OUT">Cash Out</option>
+                  </select>
+                </div>
+
+                <div class="field" style="margin: 0">
+                  <label for="cash_edit_status">
+                    Status<span class="fieldReq">*</span>
+                  </label>
+                  <select
+                    id="cash_edit_status"
+                    class="select"
+                    value={cashEditStatus()}
+                    onChange={(e) =>
+                      setCashEditStatus(e.currentTarget.value as "PENDING" | "ACTIVE")
+                    }
+                    disabled={Boolean(cashMutating())}
+                  >
+                    <option value="PENDING">Pending</option>
+                    <option value="ACTIVE">Success</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+                <div class="field" style="margin: 0">
+                  <label for="cash_edit_date">
+                    Transaction Date<span class="fieldReq">*</span>
+                  </label>
+                  <DateTimePicker
+                    id="cash_edit_date"
+                    value={cashEditDate}
+                    onChange={setCashEditDate}
+                    disabled={Boolean(cashMutating())}
+                  />
+                </div>
+
+                <div class="field" style="margin: 0">
+                  <label for="cash_edit_order">
+                    Order Number<span class="fieldReq">*</span>
+                  </label>
+                  <input
+                    id="cash_edit_order"
+                    value={cashEditOrderNumber()}
+                    onInput={(e) => setCashEditOrderNumber(e.currentTarget.value)}
+                    disabled={Boolean(cashMutating())}
+                  />
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+                <div class="field" style="margin: 0">
+                  <label for="cash_edit_total">
+                    Base Total (IDR)<span class="fieldReq">*</span>
+                  </label>
+                  <input
+                    id="cash_edit_total"
+                    inputmode="numeric"
+                    value={cashEditTotalAmount()}
+                    onInput={(e) => setCashEditTotalAmount(e.currentTarget.value)}
+                    disabled={Boolean(cashMutating())}
+                  />
+                </div>
+
+                <div class="field" style="margin: 0">
+                  <label for="cash_edit_customer_fee">
+                    Customer Fee (% of base)<span class="fieldReq">*</span>
+                  </label>
+                  <div class="suffixField">
+                    <input
+                      id="cash_edit_customer_fee"
+                      type="number"
+                      inputmode="decimal"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={cashEditCustomerFeePercent()}
+                      onInput={(e) => setCashEditCustomerFeePercent(e.currentTarget.value)}
+                      disabled={Boolean(cashMutating())}
+                    />
+                    <span class="suffixFieldText">%</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+                <div class="field" style="margin: 0">
+                  <label for="cash_edit_merchant_fee">
+                    Merchant Fee (% of base)<span class="fieldReq">*</span>
+                  </label>
+                  <div class="suffixField">
+                    <input
+                      id="cash_edit_merchant_fee"
+                      type="number"
+                      inputmode="decimal"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={cashEditMerchantFeePercent()}
+                      onInput={(e) => setCashEditMerchantFeePercent(e.currentTarget.value)}
+                      disabled={Boolean(cashMutating())}
+                    />
+                    <span class="suffixFieldText">%</span>
+                  </div>
+                </div>
+
+                <div class="field" style="margin: 0">
+                  <label for="cash_edit_merchant">
+                    Merchant<span class="fieldReq">*</span>
+                  </label>
+                  <select
+                    id="cash_edit_merchant"
+                    class="select"
+                    value={cashEditMerchantId()}
+                    onChange={(e) => setCashEditMerchantId(e.currentTarget.value)}
+                    disabled={Boolean(cashMutating())}
+                  >
+                    <For each={cashMerchants()}>
+                      {(m) => <option value={m.id}>{m.name}</option>}
+                    </For>
+                  </select>
+                </div>
+              </div>
+
+              <div class="field" style="margin: 0">
+                <label for="cash_edit_partner">
+                  Partner<span class="fieldReq">*</span>
+                </label>
+                <select
+                  id="cash_edit_partner"
+                  class="select"
+                  value={cashEditPartnerId()}
+                  onChange={(e) => setCashEditPartnerId(e.currentTarget.value)}
+                  disabled={Boolean(cashMutating())}
+                >
+                  <For each={cashPartners()}>{(p) => <option value={p.id}>{p.name}</option>}</For>
+                </select>
+              </div>
+
+              <div class="cashCalcNote">Fee breakdown (calculated from Base Total)</div>
+              <div class="cashBreakdownGrid">
+                <div class="cashCalcCard">
+                  <div class="cashCalcLabel">Base Total</div>
+                  <div class="cashCalcValue">{formatMaybeIdr(cashEditBaseAmountValue())}</div>
+                </div>
+                <div class="cashCalcCard">
+                  <div class="cashCalcLabel">Merchant Fee %</div>
+                  <div class="cashCalcValue">
+                    {formatMaybePercent(cashEditMerchantFeePercentValue())}
+                  </div>
+                </div>
+                <div class="cashCalcCard">
+                  <div class="cashCalcLabel">Merchant Fee (IDR)</div>
+                  <div class="cashCalcValue">{formatMaybeIdr(cashEditMerchantFeeAmount())}</div>
+                </div>
+                <div class="cashCalcCard">
+                  <div class="cashCalcLabel">From Merchant</div>
+                  <div class="cashCalcValue">
+                    {formatMaybeIdr(cashEditReceiveFromMerchantAmount())}
+                  </div>
+                </div>
+                <div class="cashCalcCard">
+                  <div class="cashCalcLabel">Customer Fee %</div>
+                  <div class="cashCalcValue">
+                    {formatMaybePercent(cashEditCustomerFeePercentValue())}
+                  </div>
+                </div>
+                <div class="cashCalcCard">
+                  <div class="cashCalcLabel">Customer Fee (IDR)</div>
+                  <div class="cashCalcValue">{formatMaybeIdr(cashEditGrossFeeAmount())}</div>
+                </div>
+                <div class="cashCalcCard">
+                  <div class="cashCalcLabel">To Customer</div>
+                  <div class="cashCalcValue">{formatMaybeIdr(cashEditPayToCustomerAmount())}</div>
+                </div>
+                <div class="cashCalcCard">
+                  <div class="cashCalcLabel">Profit</div>
+                  <div class="cashCalcValue">{formatMaybeIdr(cashEditNetProfitAmount())}</div>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap">
+                <button
+                  class="btn"
+                  type="button"
+                  onClick={() => {
+                    setCashEditOpen(false);
+                    setCashEditId(null);
+                  }}
+                  disabled={Boolean(cashMutating())}
+                >
+                  Cancel
+                </button>
+                <button
+                  class="btn btnPrimary"
+                  type="button"
+                  onClick={() => void saveCashEdit()}
+                  disabled={Boolean(cashMutating())}
+                >
+                  <span style="display: inline-flex; gap: 10px; align-items: center">
+                    {cashMutating() === "edit_tx" ? <span class="spinner" /> : null}
+                    <span>{cashMutating() === "edit_tx" ? "Saving…" : "Save"}</span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          </Modal>
+
+          <Modal open={cashAdvancedOpen()} onClose={() => setCashAdvancedOpen(false)}>
+            <div style="display: grid; gap: 14px">
+              <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+                <div>
+                  <div style="font-weight: 800; letter-spacing: -0.02em; font-size: 20px">
+                    Advanced Filters
+                  </div>
+                  <div style="color: var(--muted); font-size: 13px; margin-top: 2px">
+                    Filter by partner name and/or merchant name.
+                  </div>
+                </div>
+                <button class="btn" type="button" onClick={() => setCashAdvancedOpen(false)}>
+                  Close
+                </button>
+              </div>
+
+              <div class="field">
+                <label for="cash_adv_partner">Partner Name</label>
+                <input
+                  id="cash_adv_partner"
+                  value={cashAdvPartnerName()}
+                  onInput={(e) => setCashAdvPartnerName(e.currentTarget.value)}
+                  placeholder="e.g. BCA, Dana, etc."
+                />
+              </div>
+              <div class="field">
+                <label for="cash_adv_merchant">Merchant Name</label>
+                <input
+                  id="cash_adv_merchant"
+                  value={cashAdvMerchantName()}
+                  onInput={(e) => setCashAdvMerchantName(e.currentTarget.value)}
+                  placeholder="e.g. Warung Sate Pak Dimas"
+                />
+              </div>
+
+              <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap">
+                <button
+                  class="btn"
+                  type="button"
+                  onClick={() => {
+                    setCashAdvPartnerName("");
+                    setCashAdvMerchantName("");
+                  }}
+                >
+                  Clear
+                </button>
+                <button
+                  class="btn btnPrimary"
+                  type="button"
+                  onClick={() => {
+                    setCashAdvancedOpen(false);
+                    setCashPage(1);
+                    void refreshCashAll({ showSpinner: true });
+                  }}
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </Modal>
 
           <Modal open={Boolean(selectedMerchant())} onClose={() => setSelectedMerchant(null)}>
             <Show when={selectedMerchant()}>
@@ -1677,7 +3618,7 @@ export default function Dashboard(props: DashboardProps) {
                       <div style="font-weight: 700; letter-spacing: -0.02em; font-size: 20px">
                         {m().name}
                       </div>
-                      <div style="color: rgba(250,250,255,0.62); font-size: 13px; margin-top: 2px">
+                      <div style="color: var(--muted); font-size: 13px; margin-top: 2px">
                         {m().category}
                       </div>
                     </div>
@@ -1765,12 +3706,12 @@ export default function Dashboard(props: DashboardProps) {
                       >
                         <For each={selectedItems()}>
                           {(it) => (
-                            <div style="border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 12px; display: grid; gap: 10px">
+                            <div style="border: 1px solid var(--line); border-radius: 18px; padding: 12px; display: grid; gap: 10px">
                               <div style="display: flex; gap: 10px; align-items: baseline; justify-content: space-between; flex-wrap: wrap">
-                                <div style="color: rgba(250,250,255,0.86); font-size: 16px; font-weight: 750; letter-spacing: -0.02em">
+                                <div style="color: var(--ink); font-size: 16px; font-weight: 750; letter-spacing: -0.02em">
                                   {formatIdr(it.totalAmount)}
                                 </div>
-                                <div style="color: rgba(250,250,255,0.62); font-size: 13px">
+                                <div style="color: var(--muted); font-size: 13px">
                                   {formatCountdown(it.expiresAt)}
                                 </div>
                               </div>
@@ -1797,7 +3738,7 @@ export default function Dashboard(props: DashboardProps) {
                                 <img
                                   src={it.qrisUrl ?? defaultQrisImage(m().name)}
                                   alt="QRIS"
-                                  style="width: 100%; max-height: 420px; object-fit: contain; border-radius: 16px; border: 1px solid rgba(255,255,255,0.12)"
+                                  style="width: 100%; max-height: 420px; object-fit: contain; border-radius: 16px; border: 1px solid var(--line)"
                                   onError={(e) => {
                                     const img = e.currentTarget;
                                     if (img.dataset.fallback === "1") return;

@@ -46,7 +46,7 @@ export default function AdminIp() {
   const refresh = async () => {
     setLoading(true);
     try {
-      const res = await api.get<{ entries: IpEntry[] }>("/admin/ips");
+      const res = await api.get<{ entries: IpEntry[] }>("/api/admin/ips");
       setEntries(res.entries ?? []);
     } catch (e) {
       showToast("error", e instanceof Error ? e.message : "LOAD_FAILED");
@@ -113,7 +113,7 @@ export default function AdminIp() {
     setSaving(true);
     showToast("progress", "Submitting…");
     try {
-      await api.post("/admin/ips", {
+      await api.post("/api/admin/ips", {
         ip: ipVal,
         status: status(),
         note: note().trim() || undefined,
@@ -136,7 +136,7 @@ export default function AdminIp() {
     setToggleKey(`${entry.id}:${nextStatus}`);
     showToast("progress", "Submitting…");
     try {
-      await api.post("/admin/ips", {
+      await api.post("/api/admin/ips", {
         ip: entry.ip,
         status: nextStatus,
         note: entry.note ?? undefined,

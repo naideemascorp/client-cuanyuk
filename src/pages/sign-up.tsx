@@ -61,16 +61,11 @@ export default function SignUp() {
     setStatus(null);
     setBusy(true);
     try {
-      const res = await api.post<{ ok: boolean; code?: string }>("/auth/signup", {
+      await api.post<Record<string, never>>("/auth/signup", {
         username: username(),
         email: email(),
         password: password(),
       });
-      if (!res.ok) {
-        setStatus(res.code ?? "SIGNUP_FAILED");
-        setBusy(false);
-        return;
-      }
       setStatus("Check your email for a verification link. Sign in is disabled until verified.");
       localStorage.removeItem("signup.username");
       localStorage.removeItem("signup.email");

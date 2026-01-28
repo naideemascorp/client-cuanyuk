@@ -12,6 +12,15 @@ const jsonHeaders = { "content-type": "application/json" };
 
 const defaultTimeoutMs = import.meta.env.PROD ? 20_000 : 8_000;
 
+export class ApiRequestError extends Error {
+  data: unknown;
+  constructor(code: string, data: unknown) {
+    super(code);
+    this.name = "ApiRequestError";
+    this.data = data;
+  }
+}
+
 const makeUuidV4 = () => {
   const cryptoObj = globalThis.crypto;
   if (cryptoObj?.randomUUID) return cryptoObj.randomUUID();
@@ -46,6 +55,22 @@ const withAuthHeaders = (initHeaders?: HeadersInit) => {
   return headers;
 };
 
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  Boolean(v) && typeof v === "object" && !Array.isArray(v);
+
+const apiErrorCodeFrom = (parsed: unknown): string | null => {
+  if (!isRecord(parsed)) return null;
+  const code = typeof parsed.code === "string" ? parsed.code : null;
+  if (code === "99") {
+    const msg = parsed.message;
+    if (isRecord(msg) && typeof msg.what === "string") return msg.what;
+  }
+  if (code) return code;
+  const msg = parsed.message;
+  if (typeof msg === "string" && msg.trim()) return msg.trim();
+  return null;
+};
+
 const request = async <T>(
   path: string,
   init: RequestInit,
@@ -78,34 +103,27 @@ const request = async <T>(
       const trimmed = text?.trim() ?? "";
       if (trimmed) {
         try {
-          const parsed = JSON.parse(trimmed) as { code?: unknown; message?: unknown } | null;
-          if (parsed && typeof parsed === "object") {
-            const code = typeof parsed.code === "string" ? parsed.code : null;
-            const message =
-              typeof parsed.message === "string"
-                ? parsed.message
-                : parsed.message
-                  ? JSON.stringify(parsed.message)
-                  : null;
-            throw new Error(code || message || trimmed);
-          }
-        } catch {}
-        throw new Error(trimmed);
+          const parsed = JSON.parse(trimmed) as unknown;
+          const extracted = apiErrorCodeFrom(parsed);
+          if (extracted && isRecord(parsed)) throw new ApiRequestError(extracted, parsed.data);
+          throw new Error(extracted ?? trimmed);
+        } catch {
+          throw new Error(trimmed);
+        }
       }
       throw new Error(`HTTP_${res.status}`);
     }
     if (!text) return {} as T;
     try {
       const parsed = JSON.parse(text) as unknown;
-      if (parsed && typeof parsed === "object") {
-        const rec = parsed as Record<string, unknown>;
-        const code = rec.code;
+      if (isRecord(parsed)) {
+        const code = parsed.code;
         if (code === "00" || code === "09") {
-          return (rec.data ?? {}) as T;
+          return (parsed.data ?? {}) as T;
         }
         if (code === "99") {
-          const msg = rec.message ? JSON.stringify(rec.message) : "REQUEST_FAILED";
-          throw new Error(msg);
+          const extracted = apiErrorCodeFrom(parsed) ?? "REQUEST_FAILED";
+          throw new ApiRequestError(extracted, parsed.data);
         }
       }
       return parsed as T;
