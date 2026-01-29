@@ -152,6 +152,15 @@ html[data-theme="black"] {
   --danger-bg: linear-gradient(135deg, rgba(255, 124, 207, 0.08), rgba(0, 0, 0, 0.18));
 }
 
+html[data-host="app"] * {
+  scrollbar-width: none;
+}
+
+html[data-host="app"] *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 html[data-theme="light"] .btn,
 html[data-theme="light"] input,
 html[data-theme="light"] textarea,
