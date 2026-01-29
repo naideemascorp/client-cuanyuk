@@ -169,7 +169,7 @@ export default function AdminIp() {
           </div>
 
           <div class="grid">
-            <div class="card" style="grid-column: span 5">
+            <div class="card colSpan5">
               <div class="cardInner" style="display: grid; gap: 12px">
                 <div style="font-weight: 650; letter-spacing: -0.01em">Create/Update IP</div>
                 <div class="field">
@@ -223,7 +223,7 @@ export default function AdminIp() {
               </div>
             </div>
 
-            <div class="card" style="grid-column: span 7">
+            <div class="card colSpan7">
               <div class="cardInner" style="display: grid; gap: 12px">
                 <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
                   <div style="font-weight: 650; letter-spacing: -0.01em">IP Lists</div>

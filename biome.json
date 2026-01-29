@@ -9,6 +9,7 @@
       "recommended": true,
       "a11y": { "noStaticElementInteractions": "off" },
       "complexity": { "useArrowFunction": "off" },
+      "suspicious": { "noExplicitAny": "error" },
       "style": { "useTemplate": "off" }
     }
   },

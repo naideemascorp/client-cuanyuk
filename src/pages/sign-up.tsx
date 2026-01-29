@@ -121,14 +121,14 @@ export default function SignUp() {
           </div>
 
           <div class="grid">
-            <div class="card" style="grid-column: span 7">
+            <div class="card colSpan7">
               <div class="cardInner">
                 <form
                   onSubmit={onSubmit}
                   class="grid"
                   style="grid-template-columns: repeat(12, 1fr); gap: 14px"
                 >
-                  <div class="field" style="grid-column: span 12">
+                  <div class="field colSpan12">
                     <label for="username">
                       Username<span class="fieldReq">*</span>
                     </label>
@@ -144,7 +144,7 @@ export default function SignUp() {
                       <div class="fieldError">{usernameError()}</div>
                     </Show>
                   </div>
-                  <div class="field" style="grid-column: span 12">
+                  <div class="field colSpan12">
                     <label for="email">
                       Email<span class="fieldReq">*</span>
                     </label>
@@ -160,7 +160,7 @@ export default function SignUp() {
                       <div class="fieldError">{emailError()}</div>
                     </Show>
                   </div>
-                  <div class="field" style="grid-column: span 12">
+                  <div class="field colSpan12">
                     <label for="password">
                       Password<span class="fieldReq">*</span>
                     </label>
@@ -177,7 +177,10 @@ export default function SignUp() {
                       <div class="fieldError">{passwordError()}</div>
                     </Show>
                   </div>
-                  <div style="grid-column: span 12; display: flex; gap: 10px; align-items: center; justify-content: space-between">
+                  <div
+                    class="colSpan12"
+                    style="display: flex; gap: 10px; align-items: center; justify-content: space-between"
+                  >
                     <button class="btn btnHero" type="submit" disabled={!canSubmit()}>
                       <span style="display: inline-flex; gap: 10px; align-items: center">
                         {busy() ? <span class="spinner" /> : null}
@@ -189,7 +192,7 @@ export default function SignUp() {
                     </A>
                   </div>
                   {status() ? (
-                    <div style="grid-column: span 12; color: rgba(250,250,255,0.76); font-size: 14px">
+                    <div class="colSpan12" style="color: rgba(250,250,255,0.76); font-size: 14px">
                       {status()}
                     </div>
                   ) : null}
@@ -197,7 +200,7 @@ export default function SignUp() {
               </div>
             </div>
 
-            <div class="card" style="grid-column: span 5">
+            <div class="card colSpan5">
               <div class="cardInner">
                 <div style="display: grid; gap: 12px">
                   <div style="font-weight: 600; letter-spacing: -0.01em">Verification</div>

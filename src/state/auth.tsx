@@ -71,6 +71,12 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
           ["/sign-in", "/sign-up", "/verify-email"].includes(path) ||
           path.startsWith("/reset-password/") ||
           path.startsWith("/share/");
+        if (!hadToken && !isPublic) {
+          setMe(null);
+          setShareUrl(null);
+          navigate("/sign-in", { replace: true });
+          return;
+        }
         let timer: ReturnType<typeof setTimeout> | null = null;
         timer =
           !isPublic || hadToken

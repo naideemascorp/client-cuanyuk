@@ -30,12 +30,11 @@ type CashTransactionEntry = {
   cashType: "CASH_IN" | "CASH_OUT";
   transactionDate: string;
   orderNumber: string;
+  remarks: string | null;
   totalAmount: number;
-  myFeeBps: number;
   customerFeeBps: number;
   merchantFeeBps: number;
   grossProfit: number;
-  myFeeAmount: number;
   customerFeeAmount: number;
   merchantFeeAmount: number;
   grossFeeAmount: number;
@@ -57,17 +56,19 @@ type CashSummaryRow = {
 };
 
 function Sparkline(props: { values: number[]; stroke: string; fill: string }) {
-  const values = props.values.slice(-24);
+  const baseValues = props.values.slice(-24);
+  const values = baseValues.length === 1 ? [baseValues[0] ?? 0, baseValues[0] ?? 0] : baseValues;
   const n = values.length;
   if (n < 2) return null;
   const min = Math.min(...values);
   const max = Math.max(...values);
-  const range = Math.max(1, max - min);
+  const base = min >= 0 ? 0 : min;
+  const range = Math.max(1, max - base);
   const w = 120;
   const h = 34;
   const points = values.map((v, i) => {
     const x = (i / (n - 1)) * w;
-    const y = h - ((v - min) / range) * (h - 2) - 1;
+    const y = h - ((v - base) / range) * (h - 2) - 1;
     return { x, y };
   });
   const lineD = points
@@ -170,6 +171,12 @@ export default function Dashboard(props: DashboardProps) {
     const pad2 = (n: number) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   };
+  const formatIsoLocal = (iso: string) => {
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return iso;
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+  };
   const initialDashLoading = (() => {
     try {
       return sessionStorage.getItem("dash_loading") === "1";
@@ -201,19 +208,42 @@ export default function Dashboard(props: DashboardProps) {
   const [cashEntries, setCashEntries] = createSignal<CashTransactionEntry[]>([]);
   const [cashEntriesTotal, setCashEntriesTotal] = createSignal(0);
   const [cashSummaryRows, setCashSummaryRows] = createSignal<CashSummaryRow[]>([]);
-  const [cashEntriesRefreshTick, setCashEntriesRefreshTick] = createSignal(0);
-  const [cashGroup, setCashGroup] = createSignal<
+  const [cashSummaryGroup, setCashSummaryGroup] = createSignal<
     "datetime" | "day" | "week" | "month" | "year" | "all"
-  >("day");
-  const [cashFrom, setCashFrom] = createSignal("");
-  const [cashTo, setCashTo] = createSignal("");
-  const [cashTypeFilter, setCashTypeFilter] = createSignal<"ALL" | "CASH_IN" | "CASH_OUT">("ALL");
-  const [cashSearch, setCashSearch] = createSignal("");
-  const [cashMerchantId, setCashMerchantId] = createSignal<string>("");
-  const [cashPartnerId, setCashPartnerId] = createSignal<string>("");
-  const [cashAdvancedOpen, setCashAdvancedOpen] = createSignal(false);
-  const [cashAdvMerchantName, setCashAdvMerchantName] = createSignal("");
-  const [cashAdvPartnerName, setCashAdvPartnerName] = createSignal("");
+  >("all");
+  const [cashSummaryFrom, setCashSummaryFrom] = createSignal(
+    (() => {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      return toDateTimeLocal(start.getTime());
+    })(),
+  );
+  const [cashSummaryTo, setCashSummaryTo] = createSignal(
+    (() => {
+      const now = new Date();
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 0, 0);
+      return toDateTimeLocal(end.getTime());
+    })(),
+  );
+  const [cashSummaryMerchantId, setCashSummaryMerchantId] = createSignal<string>("");
+  const [cashSummaryPartnerId, setCashSummaryPartnerId] = createSignal<string>("");
+  const [cashInquiryCashType, setCashInquiryCashType] = createSignal<
+    "ALL" | "CASH_IN" | "CASH_OUT"
+  >("ALL");
+  const [cashInquiryStatus, setCashInquiryStatus] = createSignal<"DEFAULT" | "ACTIVE" | "PENDING">(
+    "DEFAULT",
+  );
+  const [cashInquiryFilterOpen, setCashInquiryFilterOpen] = createSignal(false);
+  const cashInquiryGroup = cashSummaryGroup;
+  const setCashInquiryGroup = setCashSummaryGroup;
+  const cashInquiryFrom = cashSummaryFrom;
+  const setCashInquiryFrom = setCashSummaryFrom;
+  const cashInquiryTo = cashSummaryTo;
+  const setCashInquiryTo = setCashSummaryTo;
+  const cashInquiryMerchantId = cashSummaryMerchantId;
+  const setCashInquiryMerchantId = setCashSummaryMerchantId;
+  const cashInquiryPartnerId = cashSummaryPartnerId;
+  const setCashInquiryPartnerId = setCashSummaryPartnerId;
   const [cashExporting, setCashExporting] = createSignal<string | null>(null);
   const [cashExportOpen, setCashExportOpen] = createSignal(false);
   const [cashEditOpen, setCashEditOpen] = createSignal(false);
@@ -225,6 +255,7 @@ export default function Dashboard(props: DashboardProps) {
   const [cashTxDate, setCashTxDate] = createSignal(toDateTimeLocal(Date.now()));
   const [cashTxOrderNumber, setCashTxOrderNumber] = createSignal("");
   const [cashTxTotalAmount, setCashTxTotalAmount] = createSignal("");
+  const [cashTxRemarks, setCashTxRemarks] = createSignal("");
   const [cashTxCustomerFeePercent, setCashTxCustomerFeePercent] = createSignal("0");
   const [cashTxMerchantFeePercent, setCashTxMerchantFeePercent] = createSignal("0");
   const [cashTxCashType, setCashTxCashType] = createSignal<"CASH_IN" | "CASH_OUT">("CASH_IN");
@@ -237,6 +268,7 @@ export default function Dashboard(props: DashboardProps) {
   const [cashEditDate, setCashEditDate] = createSignal(toDateTimeLocal(Date.now()));
   const [cashEditOrderNumber, setCashEditOrderNumber] = createSignal("");
   const [cashEditTotalAmount, setCashEditTotalAmount] = createSignal("");
+  const [cashEditRemarks, setCashEditRemarks] = createSignal("");
   const [cashEditCustomerFeePercent, setCashEditCustomerFeePercent] = createSignal("0");
   const [cashEditMerchantFeePercent, setCashEditMerchantFeePercent] = createSignal("0");
   const [cashEditCashType, setCashEditCashType] = createSignal<"CASH_IN" | "CASH_OUT">("CASH_IN");
@@ -244,7 +276,107 @@ export default function Dashboard(props: DashboardProps) {
   const [cashEditMerchantId, setCashEditMerchantId] = createSignal("");
   const [cashEditPartnerId, setCashEditPartnerId] = createSignal("");
 
+  type CashInquirySortKey =
+    | "transactionDate"
+    | "cashType"
+    | "status"
+    | "orderNumber"
+    | "remarks"
+    | "partner"
+    | "merchant"
+    | "totalAmount"
+    | "grossFeeAmount"
+    | "merchantFeeAmount"
+    | "netProfit"
+    | "receiveFromMerchantAmount"
+    | "payToCustomerAmount";
+  const [cashInquirySortKey, setCashInquirySortKey] =
+    createSignal<CashInquirySortKey>("transactionDate");
+  const [cashInquirySortDir, setCashInquirySortDir] = createSignal<"asc" | "desc">("desc");
+
   const readOnly = createMemo(() => Boolean(publicToken));
+  const cashSummaryMerchantMissing = createMemo(() => {
+    const id = cashSummaryMerchantId().trim();
+    if (!id) return false;
+    return !cashMerchants().some((m) => m.id === id);
+  });
+  const cashSummaryPartnerMissing = createMemo(() => {
+    const id = cashSummaryPartnerId().trim();
+    if (!id) return false;
+    return !cashPartners().some((p) => p.id === id);
+  });
+  const cashInquiryMerchantMissing = cashSummaryMerchantMissing;
+  const cashInquiryPartnerMissing = cashSummaryPartnerMissing;
+  const toggleCashInquirySort = (key: CashInquirySortKey) => {
+    if (cashInquirySortKey() === key) {
+      setCashInquirySortDir((d) => (d === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setCashInquirySortKey(key);
+    setCashInquirySortDir("asc");
+  };
+  const cashInquirySortedEntries = createMemo(() => {
+    const rows = cashEntries();
+    if (rows.length <= 1) return rows;
+    const key = cashInquirySortKey();
+    const dir = cashInquirySortDir();
+    const mult = dir === "asc" ? 1 : -1;
+    const mapped = rows.map((e, idx) => ({ e, idx }));
+    const cmpStr = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base" });
+    const cmpNum = (a: number, b: number) => (a === b ? 0 : a < b ? -1 : 1);
+    mapped.sort((a, b) => {
+      const av = a.e;
+      const bv = b.e;
+      const res = (() => {
+        switch (key) {
+          case "transactionDate":
+            return cmpNum(
+              new Date(av.transactionDate).getTime(),
+              new Date(bv.transactionDate).getTime(),
+            );
+          case "cashType":
+            return cmpStr(av.cashType, bv.cashType);
+          case "status":
+            return cmpStr(av.status, bv.status);
+          case "orderNumber":
+            return cmpStr(av.orderNumber, bv.orderNumber);
+          case "remarks":
+            return cmpStr(av.remarks ?? "", bv.remarks ?? "");
+          case "partner":
+            return cmpStr(av.partner.name, bv.partner.name);
+          case "merchant":
+            return cmpStr(av.merchant.name, bv.merchant.name);
+          case "totalAmount":
+            return cmpNum(av.totalAmount, bv.totalAmount);
+          case "grossFeeAmount":
+            return cmpNum(av.grossFeeAmount, bv.grossFeeAmount);
+          case "merchantFeeAmount":
+            return cmpNum(av.merchantFeeAmount, bv.merchantFeeAmount);
+          case "netProfit":
+            return cmpNum(av.netProfit, bv.netProfit);
+          case "receiveFromMerchantAmount":
+            return cmpNum(av.receiveFromMerchantAmount, bv.receiveFromMerchantAmount);
+          case "payToCustomerAmount":
+            return cmpNum(av.payToCustomerAmount, bv.payToCustomerAmount);
+          default:
+            return 0;
+        }
+      })();
+      if (res !== 0) return res * mult;
+      return a.idx - b.idx;
+    });
+    return mapped.map((m) => m.e);
+  });
+  createEffect(() => {
+    if (!cashSummaryMerchantMissing()) return;
+    if (!cashSummaryMerchantId().trim()) return;
+    setCashSummaryMerchantId("");
+  });
+  createEffect(() => {
+    if (!cashSummaryPartnerMissing()) return;
+    if (!cashSummaryPartnerId().trim()) return;
+    setCashSummaryPartnerId("");
+  });
   const [adminAccessLoading, setAdminAccessLoading] = createSignal(false);
   const [hasAdminAccess, setHasAdminAccess] = createSignal(false);
   const [adminChecked, setAdminChecked] = createSignal(false);
@@ -310,7 +442,15 @@ export default function Dashboard(props: DashboardProps) {
   };
   const formatMaybeIdr = (n: number | null): string => (n === null ? "—" : formatIdr(n));
   const formatCashRecordStatus = (s: string) =>
-    s === "ACTIVE" ? "Success" : s === "PENDING" ? "Pending" : s;
+    s === "ACTIVE"
+      ? "Success"
+      : s === "PENDING"
+        ? "Pending"
+        : s === "INACTIVE"
+          ? "Inactive"
+          : s === "DELETED"
+            ? "Deleted"
+            : s;
   const formatPercent = (n: number) => {
     const fixed = n.toFixed(2);
     const trimmed = fixed.endsWith(".00")
@@ -523,6 +663,22 @@ export default function Dashboard(props: DashboardProps) {
     if (!Number.isFinite(d.getTime())) return null;
     return d.toISOString();
   };
+  const parseLocalToIsoStart = (raw: string) => {
+    const v = raw.trim();
+    if (!v) return null;
+    const d = new Date(v);
+    if (!Number.isFinite(d.getTime())) return null;
+    d.setSeconds(0, 0);
+    return d.toISOString();
+  };
+  const parseLocalToIsoEnd = (raw: string) => {
+    const v = raw.trim();
+    if (!v) return null;
+    const d = new Date(v);
+    if (!Number.isFinite(d.getTime())) return null;
+    d.setSeconds(59, 999);
+    return d.toISOString();
+  };
 
   const parsePercentInput = (raw: string) => {
     const v = raw.trim();
@@ -533,36 +689,85 @@ export default function Dashboard(props: DashboardProps) {
   };
 
   const refreshCashMerchants = async () => {
-    const res = await api.get<{ merchants?: Merchant[] }>("/merchants/");
-    const all = Array.isArray(res.merchants) ? res.merchants : [];
-    const next = all.filter((m) => m.category === "Cash In/Out");
-    next.sort((a, b) => a.name.localeCompare(b.name));
-    setCashMerchants(next);
-    if (!cashTxMerchantId().trim() && next.length) setCashTxMerchantId(next[0].id);
+    try {
+      const res = await api.get<{ merchants?: Merchant[] }>("/merchants/");
+      const all = Array.isArray(res.merchants) ? res.merchants : [];
+      const next = all.filter((m) => m.category === "Cash In/Out");
+      next.sort((a, b) => a.name.localeCompare(b.name));
+      setCashMerchants(next);
+      if (!cashTxMerchantId().trim() && next.length) setCashTxMerchantId(next[0].id);
+    } catch (e) {
+      setCashMerchants([]);
+      showToast("error", e instanceof Error ? e.message : "LOAD_MERCHANTS_FAILED");
+    }
   };
 
   const refreshCashPartners = async () => {
-    const res = await api.get<{ partners: Partner[] }>("/cash/partners");
-    const next = Array.isArray(res.partners) ? res.partners : [];
-    setCashPartners(next);
-    if (!cashPartnerId().trim() && next.length) setCashPartnerId(next[0].id);
-    if (!cashTxPartnerId().trim() && next.length) setCashTxPartnerId(next[0].id);
+    try {
+      const res = await api.get<{ partners: Partner[] }>("/cash/partners");
+      const next = Array.isArray(res.partners) ? res.partners : [];
+      setCashPartners(next);
+      if (!cashTxPartnerId().trim() && next.length) setCashTxPartnerId(next[0].id);
+    } catch (e) {
+      setCashPartners([]);
+      showToast("error", e instanceof Error ? e.message : "LOAD_PARTNERS_FAILED");
+    }
+  };
+
+  const periodRangeIso = (
+    group: "day" | "week" | "month" | "year",
+  ): { fromIso: string; toIso: string } => {
+    const now = new Date();
+    if (group === "day") {
+      const from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      return { fromIso: from.toISOString(), toIso: to.toISOString() };
+    }
+    if (group === "week") {
+      const day = (now.getDay() + 6) % 7;
+      const from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      from.setDate(from.getDate() - day);
+      const to = new Date(from);
+      to.setDate(from.getDate() + 6);
+      to.setHours(23, 59, 59, 999);
+      return { fromIso: from.toISOString(), toIso: to.toISOString() };
+    }
+    if (group === "month") {
+      const from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      return { fromIso: from.toISOString(), toIso: to.toISOString() };
+    }
+    const from = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+    const to = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+    return { fromIso: from.toISOString(), toIso: to.toISOString() };
   };
 
   const refreshCashSummary = async () => {
-    const sp = new URLSearchParams();
-    sp.set("group", cashGroup());
-    const fromIso = parseLocalToIso(cashFrom());
-    const toIso = parseLocalToIso(cashTo());
-    if (fromIso) sp.set("from", fromIso);
-    if (toIso) sp.set("to", toIso);
-    if (cashMerchantId().trim()) sp.set("merchantId", cashMerchantId().trim());
-    if (cashPartnerId().trim()) sp.set("partnerId", cashPartnerId().trim());
-    const res = await api.get<{ rows: CashSummaryRow[] }>(`/cash/summary?${sp.toString()}`);
-    setCashSummaryRows(Array.isArray(res.rows) ? res.rows : []);
+    try {
+      const sp = new URLSearchParams();
+      const group = cashSummaryGroup();
+      sp.set("group", group);
+      if (group === "datetime") {
+        const fromIso = parseLocalToIsoStart(cashSummaryFrom());
+        const toIso = parseLocalToIsoEnd(cashSummaryTo());
+        if (fromIso) sp.set("from", fromIso);
+        if (toIso) sp.set("to", toIso);
+      } else if (group !== "all") {
+        const r = periodRangeIso(group);
+        sp.set("from", r.fromIso);
+        sp.set("to", r.toIso);
+      }
+      if (cashSummaryMerchantId().trim()) sp.set("merchantId", cashSummaryMerchantId().trim());
+      if (cashSummaryPartnerId().trim()) sp.set("partnerId", cashSummaryPartnerId().trim());
+      const res = await api.get<{ rows: CashSummaryRow[] }>(`/cash/summary?${sp.toString()}`);
+      setCashSummaryRows(Array.isArray(res.rows) ? res.rows : []);
+    } catch (e) {
+      setCashSummaryRows([]);
+      showToast("error", e instanceof Error ? e.message : "LOAD_SUMMARY_FAILED");
+    }
   };
 
-  const cashPageSize = 25;
+  const cashPageSize = 10;
   const cashTotalPages = createMemo(() =>
     Math.max(1, Math.ceil(Math.max(0, cashEntriesTotal()) / cashPageSize)),
   );
@@ -574,21 +779,41 @@ export default function Dashboard(props: DashboardProps) {
   });
 
   let cashInquiryReq = 0;
+  const cashInquiryHasActiveFilters = createMemo(() => {
+    const merchantId = cashSummaryMerchantId().trim();
+    const partnerId = cashSummaryPartnerId().trim();
+    const group = cashSummaryGroup();
+    const hasPeriod = group !== "all";
+    const hasCashType = cashInquiryCashType() !== "ALL";
+    const hasStatus = cashInquiryStatus() !== "DEFAULT";
+    return Boolean(merchantId || partnerId || hasPeriod || hasCashType || hasStatus);
+  });
   const refreshCashEntries = async () => {
     cashInquiryReq += 1;
     const reqId = cashInquiryReq;
+    if (!cashInquiryHasActiveFilters()) {
+      setCashInquiryLoading(false);
+      setCashEntries([]);
+      setCashEntriesTotal(0);
+      return;
+    }
     setCashInquiryLoading(true);
     const sp = new URLSearchParams();
-    const fromIso = parseLocalToIso(cashFrom());
-    const toIso = parseLocalToIso(cashTo());
-    if (fromIso) sp.set("from", fromIso);
-    if (toIso) sp.set("to", toIso);
-    if (cashTypeFilter() !== "ALL") sp.set("cashType", cashTypeFilter());
-    if (cashSearch().trim()) sp.set("search", cashSearch().trim());
-    if (cashMerchantId().trim()) sp.set("merchantId", cashMerchantId().trim());
-    if (cashPartnerId().trim()) sp.set("partnerId", cashPartnerId().trim());
-    if (cashAdvMerchantName().trim()) sp.set("merchantName", cashAdvMerchantName().trim());
-    if (cashAdvPartnerName().trim()) sp.set("partnerName", cashAdvPartnerName().trim());
+    const group = cashSummaryGroup();
+    if (group === "datetime") {
+      const fromIso = parseLocalToIsoStart(cashSummaryFrom());
+      const toIso = parseLocalToIsoEnd(cashSummaryTo());
+      if (fromIso) sp.set("from", fromIso);
+      if (toIso) sp.set("to", toIso);
+    } else if (group !== "all") {
+      const r = periodRangeIso(group);
+      sp.set("from", r.fromIso);
+      sp.set("to", r.toIso);
+    }
+    if (cashInquiryCashType() !== "ALL") sp.set("cashType", cashInquiryCashType());
+    if (cashInquiryStatus() !== "DEFAULT") sp.set("status", cashInquiryStatus());
+    if (cashSummaryMerchantId().trim()) sp.set("merchantId", cashSummaryMerchantId().trim());
+    if (cashSummaryPartnerId().trim()) sp.set("partnerId", cashSummaryPartnerId().trim());
     sp.set("take", String(cashPageSize));
     sp.set("skip", String((cashPage() - 1) * cashPageSize));
     try {
@@ -598,16 +823,51 @@ export default function Dashboard(props: DashboardProps) {
       if (reqId !== cashInquiryReq) return;
       setCashEntries(Array.isArray(res.entries) ? res.entries : []);
       setCashEntriesTotal(Math.max(0, Number(res.totalCount ?? 0)));
+    } catch (e) {
+      if (reqId !== cashInquiryReq) return;
+      setCashEntries([]);
+      setCashEntriesTotal(0);
+      showToast("error", e instanceof Error ? e.message : "LOAD_CASH_ENTRIES_FAILED");
     } finally {
       if (reqId === cashInquiryReq) setCashInquiryLoading(false);
     }
+  };
+
+  const clearCashSummaryFilters = () => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 0, 0);
+    setCashSummaryGroup("all");
+    setCashSummaryFrom(toDateTimeLocal(start.getTime()));
+    setCashSummaryTo(toDateTimeLocal(end.getTime()));
+    setCashSummaryMerchantId("");
+    setCashSummaryPartnerId("");
+  };
+
+  const clearCashInquiryFilters = () => {
+    clearCashSummaryFilters();
+    setCashInquiryCashType("ALL");
+    setCashInquiryStatus("DEFAULT");
+  };
+
+  const runCashInquiry = async () => {
+    if (cashInquiryLoading() || cashLoading()) return;
+    if (!cashInquiryHasActiveFilters()) {
+      cashInquiryReq += 1;
+      setCashInquiryLoading(false);
+      setCashEntries([]);
+      setCashEntriesTotal(0);
+      return;
+    }
+    setCashPage(1);
+    await refreshCashEntries();
   };
 
   const refreshCashAll = async (opts: { showSpinner: boolean }) => {
     if (readOnly()) return;
     if (opts.showSpinner) setCashLoading(true);
     try {
-      await Promise.all([refreshCashPartners(), refreshCashSummary(), refreshCashEntries()]);
+      await Promise.all([refreshCashPartners(), refreshCashSummary()]);
     } finally {
       if (opts.showSpinner) setCashLoading(false);
     }
@@ -631,7 +891,15 @@ export default function Dashboard(props: DashboardProps) {
       }
     );
   });
-  const cashSummarySeries = createMemo(() => {
+  type CashSummarySeries = {
+    netProfit: number[];
+    grossProfit: number[];
+    cashIn: number[];
+    cashOut: number[];
+    totalAmount: number[];
+    pendingFunds: number[];
+  };
+  const cashSummarySeries = createMemo<CashSummarySeries>(() => {
     const sorted = cashSummaryRows()
       .slice()
       .sort((a, b) => a.bucket.localeCompare(b.bucket));
@@ -641,6 +909,7 @@ export default function Dashboard(props: DashboardProps) {
         grossProfit: [0, 0],
         cashIn: [0, 0],
         cashOut: [0, 0],
+        totalAmount: [0, 0],
         pendingFunds: [0, 0],
       };
     }
@@ -650,6 +919,7 @@ export default function Dashboard(props: DashboardProps) {
       grossProfit: last.map((r) => r.grossProfit),
       cashIn: last.map((r) => r.cashIn),
       cashOut: last.map((r) => r.cashOut),
+      totalAmount: last.map((r) => r.cashIn + r.cashOut),
       pendingFunds: last.map((r) => r.pendingFunds),
     };
   });
@@ -777,16 +1047,22 @@ export default function Dashboard(props: DashboardProps) {
 
       const sp = new URLSearchParams();
       sp.set("format", format);
-      const fromIso = parseLocalToIso(cashFrom());
-      const toIso = parseLocalToIso(cashTo());
-      if (fromIso) sp.set("from", fromIso);
-      if (toIso) sp.set("to", toIso);
-      if (cashTypeFilter() !== "ALL") sp.set("cashType", cashTypeFilter());
-      if (cashSearch().trim()) sp.set("search", cashSearch().trim());
-      if (cashMerchantId().trim()) sp.set("merchantId", cashMerchantId().trim());
-      if (cashPartnerId().trim()) sp.set("partnerId", cashPartnerId().trim());
-      if (cashAdvMerchantName().trim()) sp.set("merchantName", cashAdvMerchantName().trim());
-      if (cashAdvPartnerName().trim()) sp.set("partnerName", cashAdvPartnerName().trim());
+      sp.set("tzOffsetMinutes", String(new Date().getTimezoneOffset()));
+      const group = cashSummaryGroup();
+      if (group === "datetime") {
+        const fromIso = parseLocalToIsoStart(cashSummaryFrom());
+        const toIso = parseLocalToIsoEnd(cashSummaryTo());
+        if (fromIso) sp.set("from", fromIso);
+        if (toIso) sp.set("to", toIso);
+      } else if (group !== "all") {
+        const r = periodRangeIso(group);
+        sp.set("from", r.fromIso);
+        sp.set("to", r.toIso);
+      }
+      if (cashInquiryCashType() !== "ALL") sp.set("cashType", cashInquiryCashType());
+      if (cashInquiryStatus() !== "DEFAULT") sp.set("status", cashInquiryStatus());
+      if (cashSummaryMerchantId().trim()) sp.set("merchantId", cashSummaryMerchantId().trim());
+      if (cashSummaryPartnerId().trim()) sp.set("partnerId", cashSummaryPartnerId().trim());
 
       const headers = new Headers();
       try {
@@ -932,52 +1208,49 @@ export default function Dashboard(props: DashboardProps) {
     if (menuSection() !== "CASH") return;
     if (readOnly()) return;
     if (auth.loading() || !auth.me()) return;
-    cashPage();
-    cashEntriesRefreshTick();
-    void refreshCashEntries();
-  });
-
-  createEffect(() => {
-    if (menuSection() !== "CASH") return;
-    if (readOnly()) return;
-    if (auth.loading() || !auth.me()) return;
-    cashFrom();
-    cashTo();
-    cashTypeFilter();
-    cashMerchantId();
-    cashPartnerId();
-    cashAdvMerchantName();
-    cashAdvPartnerName();
+    cashSummaryGroup();
+    cashSummaryFrom();
+    cashSummaryTo();
+    cashSummaryMerchantId();
+    cashSummaryPartnerId();
+    cashInquiryCashType();
+    cashInquiryStatus();
     setCashPage(1);
-    setCashEntriesRefreshTick((v) => v + 1);
   });
 
   createEffect(() => {
     if (menuSection() !== "CASH") return;
     if (readOnly()) return;
     if (auth.loading() || !auth.me()) return;
-    cashGroup();
-    cashFrom();
-    cashTo();
-    cashMerchantId();
-    cashPartnerId();
-    void refreshCashSummary();
-  });
-
-  createEffect(() => {
-    if (menuSection() !== "CASH") return;
-    if (readOnly()) return;
-    if (auth.loading() || !auth.me()) return;
-    const raw = cashSearch();
-    const trimmed = raw.trim();
-    const id = globalThis.setTimeout(
-      () => {
-        setCashPage(1);
-        setCashEntriesRefreshTick((v) => v + 1);
-      },
-      trimmed ? 350 : 0,
-    );
+    cashPage();
+    cashSummaryGroup();
+    cashSummaryFrom();
+    cashSummaryTo();
+    cashSummaryMerchantId();
+    cashSummaryPartnerId();
+    cashInquiryCashType();
+    cashInquiryStatus();
+    if (!cashInquiryHasActiveFilters()) {
+      cashInquiryReq += 1;
+      setCashInquiryLoading(false);
+      setCashEntries([]);
+      setCashEntriesTotal(0);
+      return;
+    }
+    const id = globalThis.setTimeout(() => void refreshCashEntries(), 200);
     onCleanup(() => globalThis.clearTimeout(id));
+  });
+
+  createEffect(() => {
+    if (menuSection() !== "CASH") return;
+    if (readOnly()) return;
+    if (auth.loading() || !auth.me()) return;
+    cashSummaryGroup();
+    cashSummaryFrom();
+    cashSummaryTo();
+    cashSummaryMerchantId();
+    cashSummaryPartnerId();
+    void refreshCashSummary();
   });
 
   createEffect(() => {
@@ -1253,6 +1526,7 @@ export default function Dashboard(props: DashboardProps) {
         cashType: cashTxCashType(),
         transactionDate: transactionDateIso,
         orderNumber,
+        remarks: cashTxRemarks().trim() ? cashTxRemarks().trim() : undefined,
         totalAmount,
         customerFeePercent,
         merchantFeePercent,
@@ -1262,6 +1536,7 @@ export default function Dashboard(props: DashboardProps) {
       });
       setCashTxOrderNumber("");
       setCashTxTotalAmount("");
+      setCashTxRemarks("");
       setCashTxStatus("PENDING");
       showToast("success", "Record added.");
       setCashPage(1);
@@ -1279,6 +1554,7 @@ export default function Dashboard(props: DashboardProps) {
     setCashEditDate(toDateTimeLocal(new Date(entry.transactionDate).getTime()));
     setCashEditOrderNumber(entry.orderNumber);
     setCashEditTotalAmount(String(entry.totalAmount));
+    setCashEditRemarks(entry.remarks ?? "");
     setCashEditCustomerFeePercent(String(entry.customerFeeBps / 100));
     setCashEditMerchantFeePercent(String(entry.merchantFeeBps / 100));
     setCashEditCashType(entry.cashType);
@@ -1336,6 +1612,7 @@ export default function Dashboard(props: DashboardProps) {
         cashType: cashEditCashType(),
         transactionDate: transactionDateIso,
         orderNumber,
+        remarks: cashEditRemarks().trim() ? cashEditRemarks().trim() : undefined,
         totalAmount,
         customerFeePercent,
         merchantFeePercent,
@@ -1441,6 +1718,55 @@ export default function Dashboard(props: DashboardProps) {
   const [layoutMode, setLayoutMode] = createSignal<"CATEGORY" | "MERCHANT" | "LINK" | "QRIS">(
     "CATEGORY",
   );
+  const [shareDefaultView, setShareDefaultView] = createSignal<
+    "CATEGORY" | "MERCHANT" | "LINK" | "QRIS"
+  >(
+    (() => {
+      try {
+        const raw = localStorage.getItem("share_default_view") ?? "";
+        const v = raw.trim().toUpperCase();
+        if (v === "CATEGORY" || v === "MERCHANT" || v === "LINK" || v === "QRIS") return v;
+      } catch {}
+      return "CATEGORY";
+    })(),
+  );
+
+  const shareUrlWithView = createMemo(() => {
+    const raw = shareUrl();
+    if (!raw) return null;
+    try {
+      const u = new URL(raw);
+      const v = shareDefaultView();
+      const token =
+        v === "CATEGORY"
+          ? "category"
+          : v === "MERCHANT"
+            ? "merchant"
+            : v === "LINK"
+              ? "link"
+              : "qris";
+      u.searchParams.set("view", token);
+      return u.toString();
+    } catch {
+      return raw;
+    }
+  });
+
+  createEffect(() => {
+    try {
+      localStorage.setItem("share_default_view", shareDefaultView());
+    } catch {}
+  });
+
+  createEffect(() => {
+    if (!publicToken) return;
+    const raw = globalThis.location?.search ?? "";
+    const v = new URLSearchParams(raw).get("view")?.trim().toLowerCase() ?? "";
+    if (v === "qris") setLayoutMode("QRIS");
+    else if (v === "link" || v === "links") setLayoutMode("LINK");
+    else if (v === "merchant") setLayoutMode("MERCHANT");
+    else if (v === "category") setLayoutMode("CATEGORY");
+  });
 
   const merchantLayoutPageSize = 20;
   const [merchantLayoutPage, setMerchantLayoutPage] = createSignal(1);
@@ -1670,11 +1996,11 @@ export default function Dashboard(props: DashboardProps) {
           </div>
 
           <div class="grid" style="margin-top: 18px">
-            <div class="card" style="grid-column: span 8">
+            <div class="card colSpan8">
               <div class="cardInner">
                 <div class="dashMenu">
                   <div class="dashMenuSection">
-                    <div class="dashMenuLabel">Payment Links</div>
+                    <div class="dashMenuLabel">Payment Link/s</div>
                     <div class="dashMenuRow">
                       <button
                         classList={{
@@ -1785,258 +2111,135 @@ export default function Dashboard(props: DashboardProps) {
                       </div>
                     </div>
 
-                    <div class="cashFilters">
-                      <div class="field cashFilterField">
-                        <label for="cash_from">From</label>
-                        <DateTimePicker
-                          id="cash_from"
-                          value={cashFrom}
-                          onChange={setCashFrom}
-                          disabled={cashInquiryLoading() || cashLoading()}
-                        />
-                      </div>
-                      <div class="field cashFilterField">
-                        <label for="cash_to">To</label>
-                        <DateTimePicker
-                          id="cash_to"
-                          value={cashTo}
-                          onChange={setCashTo}
-                          disabled={cashInquiryLoading() || cashLoading()}
-                        />
-                      </div>
-                      <div class="field cashFilterField">
-                        <label for="cash_type">Cash Flow Type</label>
-                        <select
-                          id="cash_type"
-                          class="select"
-                          value={cashTypeFilter()}
-                          onChange={(e) =>
-                            setCashTypeFilter(
-                              e.currentTarget.value as "ALL" | "CASH_IN" | "CASH_OUT",
-                            )
-                          }
-                          disabled={cashInquiryLoading() || cashLoading()}
-                        >
-                          <option value="ALL">All</option>
-                          <option value="CASH_IN">Cash In</option>
-                          <option value="CASH_OUT">Cash Out</option>
-                        </select>
-                      </div>
-                      <div class="field cashFilterField">
-                        <label for="cash_merchant">Merchant</label>
-                        <select
-                          id="cash_merchant"
-                          class="select"
-                          value={cashMerchantId()}
-                          onChange={(e) => setCashMerchantId(e.currentTarget.value)}
-                          disabled={cashInquiryLoading() || cashLoading()}
-                        >
-                          <option value="">All</option>
-                          <For each={cashMerchants()}>
-                            {(m) => <option value={m.id}>{m.name}</option>}
-                          </For>
-                        </select>
-                      </div>
-                      <div class="field cashFilterField">
-                        <label for="cash_partner">Partner</label>
-                        <select
-                          id="cash_partner"
-                          class="select"
-                          value={cashPartnerId()}
-                          onChange={(e) => setCashPartnerId(e.currentTarget.value)}
-                          disabled={cashInquiryLoading() || cashLoading()}
-                        >
-                          <option value="">All</option>
-                          <For each={cashPartners()}>
-                            {(p) => <option value={p.id}>{p.name}</option>}
-                          </For>
-                        </select>
-                      </div>
-                      <div class="field cashFilterField">
-                        <label for="cash_search">Search</label>
-                        <div class="inputWithBtn">
-                          <input
-                            id="cash_search"
-                            value={cashSearch()}
-                            onInput={(e) => setCashSearch(e.currentTarget.value)}
-                            placeholder="Search across all fields…"
-                          />
-                          <button
-                            class="btn"
-                            type="button"
-                            onClick={() => setCashAdvancedOpen(true)}
-                            disabled={cashInquiryLoading() || cashLoading()}
-                            aria-label="Advanced filters"
-                          >
-                            <span style="display: inline-flex; gap: 10px; align-items: center">
-                              <span style="font-size: 18px; line-height: 1">⌕</span>
-                              <span>Filters</span>
-                            </span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="cashExports">
-                      <div class="dashMenuLabel" style="margin: 0">
-                        Export
-                      </div>
-                      <div class="exportWrap">
-                        <button
-                          class="btn btnHero exportBtn"
-                          type="button"
-                          disabled={cashLoading() || Boolean(cashExporting())}
-                          aria-haspopup="menu"
-                          aria-expanded={cashExportOpen()}
-                          onClick={() => setCashExportOpen((v) => !v)}
-                        >
-                          <span class="exportBtnInner">
-                            {cashExporting() ? <span class="spinner" /> : null}
-                            {!cashExporting() ? (
-                              <svg
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                              >
-                                <title>Export</title>
-                                <path d="M12 3v12" />
-                                <path d="M7 8l5-5 5 5" />
-                                <path d="M5 21h14a2 2 0 0 0 2-2v-4" />
-                                <path d="M3 15v4a2 2 0 0 0 2 2" />
-                              </svg>
-                            ) : null}
-                            <span class="exportBtnText">
-                              {cashExporting() ? "Exporting…" : "Export"}
-                            </span>
-                            <span class="exportBtnChevron">{cashExportOpen() ? "▴" : "▾"}</span>
-                          </span>
-                        </button>
-                        <Show when={cashExportOpen()}>
-                          <div class="exportMenu" role="menu">
-                            <For each={["pdf", "xlsx", "xml", "json", "csv"] as const}>
-                              {(fmt) => (
-                                <button
-                                  class="exportItem"
-                                  type="button"
-                                  role="menuitem"
-                                  disabled={cashLoading() || Boolean(cashExporting())}
-                                  onClick={() => {
-                                    setCashExportOpen(false);
-                                    void downloadCashExport(fmt);
-                                  }}
-                                >
-                                  <span class="exportItemInner">
-                                    <span class="exportItemIcon" aria-hidden="true">
-                                      {fmt === "pdf" ? (
-                                        <svg
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          stroke-width="2"
-                                        >
-                                          <title>PDF</title>
-                                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                          <path d="M14 2v6h6" />
-                                          <path d="M8 13h8" />
-                                          <path d="M8 17h6" />
-                                        </svg>
-                                      ) : fmt === "xlsx" ? (
-                                        <svg
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          stroke-width="2"
-                                        >
-                                          <title>XLSX</title>
-                                          <path d="M3 3h18v18H3z" />
-                                          <path d="M3 9h18" />
-                                          <path d="M9 21V9" />
-                                        </svg>
-                                      ) : fmt === "xml" ? (
-                                        <svg
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          stroke-width="2"
-                                        >
-                                          <title>XML</title>
-                                          <path d="M8 6L3 12l5 6" />
-                                          <path d="M16 6l5 6-5 6" />
-                                          <path d="M10 19l4-14" />
-                                        </svg>
-                                      ) : fmt === "json" ? (
-                                        <svg
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          stroke-width="2"
-                                        >
-                                          <title>JSON</title>
-                                          <path d="M8 7c0-2 1-3 3-3" />
-                                          <path d="M8 17c0 2 1 3 3 3" />
-                                          <path d="M16 7c0-2-1-3-3-3" />
-                                          <path d="M16 17c0 2-1 3-3 3" />
-                                        </svg>
-                                      ) : (
-                                        <svg
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          stroke-width="2"
-                                        >
-                                          <title>CSV</title>
-                                          <path d="M4 6h16" />
-                                          <path d="M4 12h16" />
-                                          <path d="M4 18h16" />
-                                          <path d="M8 6v12" />
-                                          <path d="M16 6v12" />
-                                        </svg>
-                                      )}
-                                    </span>
-                                    <span class="exportItemLabel" style="text-transform: uppercase">
-                                      {fmt}
-                                    </span>
-                                  </span>
-                                </button>
-                              )}
-                            </For>
-                          </div>
-                        </Show>
-                      </div>
-                    </div>
-
                     <div class="cashSummary">
                       <div class="cashSummaryBar">
                         <div class="dashMenuLabel" style="margin: 0">
                           Summary
                         </div>
                         <div class="cashSummaryControls">
-                          <select
-                            class="select"
-                            value={cashGroup()}
-                            onChange={(e) =>
-                              setCashGroup(
-                                e.currentTarget.value as
-                                  | "datetime"
-                                  | "day"
-                                  | "week"
-                                  | "month"
-                                  | "year"
-                                  | "all",
-                              )
-                            }
-                            disabled={cashLoading()}
+                          <div
+                            class="field cashSummaryFilterField cashSummaryFilterField--merchant"
+                            style="margin: 0"
                           >
-                            <option value="datetime">Date/Time</option>
-                            <option value="day">Day</option>
-                            <option value="week">Week</option>
-                            <option value="month">Month</option>
-                            <option value="year">Year</option>
-                            <option value="all">All Time</option>
-                          </select>
+                            <label for="cash_summary_merchant">Merchant</label>
+                            <select
+                              id="cash_summary_merchant"
+                              class="select"
+                              value={cashSummaryMerchantId()}
+                              onChange={(e) => setCashSummaryMerchantId(e.currentTarget.value)}
+                              disabled={cashLoading()}
+                            >
+                              <option value="">All</option>
+                              <Show when={cashSummaryMerchantMissing()}>
+                                <option value={cashSummaryMerchantId()}>
+                                  Selected merchant (unavailable)
+                                </option>
+                              </Show>
+                              <For each={cashMerchants()}>
+                                {(m) => <option value={m.id}>{m.name}</option>}
+                              </For>
+                            </select>
+                          </div>
+                          <div
+                            class="field cashSummaryFilterField cashSummaryFilterField--partner"
+                            style="margin: 0"
+                          >
+                            <label for="cash_summary_partner">Partner</label>
+                            <select
+                              id="cash_summary_partner"
+                              class="select"
+                              value={cashSummaryPartnerId()}
+                              onChange={(e) => setCashSummaryPartnerId(e.currentTarget.value)}
+                              disabled={cashLoading()}
+                            >
+                              <option value="">All</option>
+                              <Show when={cashSummaryPartnerMissing()}>
+                                <option value={cashSummaryPartnerId()}>
+                                  Selected partner (unavailable)
+                                </option>
+                              </Show>
+                              <For each={cashPartners()}>
+                                {(p) => <option value={p.id}>{p.name}</option>}
+                              </For>
+                            </select>
+                          </div>
+                          <div
+                            class="field cashSummaryFilterField cashSummaryFilterField--period"
+                            style="margin: 0"
+                          >
+                            <label for="cash_summary_group">Period</label>
+                            <select
+                              id="cash_summary_group"
+                              class="select"
+                              value={cashSummaryGroup()}
+                              onChange={(e) =>
+                                setCashSummaryGroup(
+                                  e.currentTarget.value as
+                                    | "datetime"
+                                    | "day"
+                                    | "week"
+                                    | "month"
+                                    | "year"
+                                    | "all",
+                                )
+                              }
+                              disabled={cashLoading()}
+                            >
+                              <option value="datetime">Date/Time</option>
+                              <option value="day">Day</option>
+                              <option value="week">Week</option>
+                              <option value="month">Month</option>
+                              <option value="year">Year</option>
+                              <option value="all">All Time</option>
+                            </select>
+                          </div>
+                          <Show when={cashSummaryGroup() === "datetime"}>
+                            <div class="cashSummaryRange">
+                              <div class="field cashSummaryRangeField" style="margin: 0">
+                                <label for="cash_summary_from">From</label>
+                                <DateTimePicker
+                                  id="cash_summary_from"
+                                  value={cashSummaryFrom}
+                                  onChange={setCashSummaryFrom}
+                                  disabled={cashLoading()}
+                                />
+                              </div>
+                              <div class="field cashSummaryRangeField" style="margin: 0">
+                                <label for="cash_summary_to">To</label>
+                                <DateTimePicker
+                                  id="cash_summary_to"
+                                  value={cashSummaryTo}
+                                  onChange={setCashSummaryTo}
+                                  minValue={cashSummaryFrom}
+                                  disabled={cashLoading()}
+                                />
+                              </div>
+                            </div>
+                          </Show>
+                          <div class="cashSummaryActions">
+                            <button
+                              class="btn btnHero exportBtn"
+                              type="button"
+                              onClick={clearCashSummaryFilters}
+                              disabled={cashLoading()}
+                            >
+                              <span class="exportBtnInner">
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  stroke-width="2"
+                                >
+                                  <title>Clear</title>
+                                  <path d="M5 5l14 14" />
+                                  <path d="M19 5L5 19" />
+                                </svg>
+                                <span class="exportBtnText">Clear</span>
+                              </span>
+                            </button>
+                          </div>
                         </div>
                       </div>
                       <div class="cashSummaryCards">
@@ -2079,22 +2282,24 @@ export default function Dashboard(props: DashboardProps) {
                                 stroke="currentColor"
                                 stroke-width="2"
                               >
-                                <title>Customer Fees</title>
+                                <title>Total Transaction Amount</title>
                                 <path d="M4 19V5" />
                                 <path d="M4 19h16" />
                                 <path d="M8 15l3-3 3 2 4-5" />
                               </svg>
                             </div>
                             <div>
-                              <div class="cashSummaryLabel">Customer Fees</div>
+                              <div class="cashSummaryLabel">Total Transaction Amount</div>
                               <div class="cashSummaryValue">
-                                {formatIdr(cashSummaryDisplay().grossProfit)}
+                                {formatIdr(
+                                  cashSummaryDisplay().cashIn + cashSummaryDisplay().cashOut,
+                                )}
                               </div>
                             </div>
                           </div>
                           <div class="cashSummarySpark">
                             <Sparkline
-                              values={cashSummarySeries().grossProfit}
+                              values={cashSummarySeries().totalAmount}
                               stroke="rgba(157, 124, 255, 0.9)"
                               fill="rgba(157, 124, 255, 0.12)"
                             />
@@ -2191,41 +2396,321 @@ export default function Dashboard(props: DashboardProps) {
                           </div>
                         </div>
                       </div>
-                      <Show when={cashSummaryRows().length > 1}>
-                        <div class="cashSummaryTableWrap">
-                          <table class="cashTable">
-                            <thead>
-                              <tr>
-                                <th>Bucket</th>
-                                <th>Net</th>
-                                <th>Gross</th>
-                                <th>Cash In</th>
-                                <th>Cash Out</th>
-                                <th>Pending</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <For
-                                each={cashSummaryRows()
-                                  .slice()
-                                  .sort((a, b) => b.bucket.localeCompare(a.bucket))
-                                  .slice(0, 80)}
-                              >
-                                {(r) => (
-                                  <tr>
-                                    <td>{r.bucket.slice(0, 19).replace("T", " ")}</td>
-                                    <td>{formatIdr(r.netProfit)}</td>
-                                    <td>{formatIdr(r.grossProfit)}</td>
-                                    <td>{formatIdr(r.cashIn)}</td>
-                                    <td>{formatIdr(r.cashOut)}</td>
-                                    <td>{formatIdr(r.pendingFunds)}</td>
-                                  </tr>
-                                )}
-                              </For>
-                            </tbody>
-                          </table>
+                    </div>
+
+                    <div class="cashSummaryBar" style="margin-top: 12px; align-items: flex-end">
+                      <div class="dashMenuLabel" style="margin: 0">
+                        Inquiry Filters
+                      </div>
+                      <div class="cashSummaryControls cashInquiryFilterBox">
+                        <div class="field cashFilterField">
+                          <label for="cash_inquiry_merchant">Merchant</label>
+                          <select
+                            id="cash_inquiry_merchant"
+                            class="select"
+                            value={cashSummaryMerchantId()}
+                            onChange={(e) => setCashSummaryMerchantId(e.currentTarget.value)}
+                            disabled={cashLoading()}
+                          >
+                            <option value="">All</option>
+                            <Show when={cashSummaryMerchantMissing()}>
+                              <option value={cashSummaryMerchantId()}>
+                                Selected merchant (unavailable)
+                              </option>
+                            </Show>
+                            <For each={cashMerchants()}>
+                              {(m) => <option value={m.id}>{m.name}</option>}
+                            </For>
+                          </select>
                         </div>
-                      </Show>
+
+                        <div class="field cashFilterField">
+                          <label for="cash_inquiry_partner">Partner</label>
+                          <select
+                            id="cash_inquiry_partner"
+                            class="select"
+                            value={cashSummaryPartnerId()}
+                            onChange={(e) => setCashSummaryPartnerId(e.currentTarget.value)}
+                            disabled={cashLoading()}
+                          >
+                            <option value="">All</option>
+                            <Show when={cashSummaryPartnerMissing()}>
+                              <option value={cashSummaryPartnerId()}>
+                                Selected partner (unavailable)
+                              </option>
+                            </Show>
+                            <For each={cashPartners()}>
+                              {(p) => <option value={p.id}>{p.name}</option>}
+                            </For>
+                          </select>
+                        </div>
+
+                        <div class="field cashFilterField">
+                          <label for="cash_inquiry_status">Status</label>
+                          <select
+                            id="cash_inquiry_status"
+                            class="select"
+                            value={cashInquiryStatus()}
+                            onChange={(e) =>
+                              setCashInquiryStatus(
+                                e.currentTarget.value as "DEFAULT" | "ACTIVE" | "PENDING",
+                              )
+                            }
+                            disabled={cashLoading()}
+                          >
+                            <option value="DEFAULT" hidden>
+                              Select…
+                            </option>
+                            <option value="PENDING">Pending</option>
+                            <option value="ACTIVE">Success</option>
+                          </select>
+                        </div>
+
+                        <div class="field cashFilterField">
+                          <label for="cash_inquiry_type">Cash Flow Type</label>
+                          <select
+                            id="cash_inquiry_type"
+                            class="select"
+                            value={cashInquiryCashType()}
+                            onChange={(e) =>
+                              setCashInquiryCashType(
+                                e.currentTarget.value as "ALL" | "CASH_IN" | "CASH_OUT",
+                              )
+                            }
+                            disabled={cashLoading()}
+                          >
+                            <option value="ALL">All</option>
+                            <option value="CASH_IN">Cash In</option>
+                            <option value="CASH_OUT">Cash Out</option>
+                          </select>
+                        </div>
+
+                        <div class="field cashFilterField">
+                          <label for="cash_inquiry_group">Period</label>
+                          <select
+                            id="cash_inquiry_group"
+                            class="select"
+                            value={cashSummaryGroup()}
+                            onChange={(e) =>
+                              setCashSummaryGroup(
+                                e.currentTarget.value as
+                                  | "datetime"
+                                  | "day"
+                                  | "week"
+                                  | "month"
+                                  | "year"
+                                  | "all",
+                              )
+                            }
+                            disabled={cashLoading()}
+                          >
+                            <option value="datetime">Date/Time</option>
+                            <option value="day">Day</option>
+                            <option value="week">Week</option>
+                            <option value="month">Month</option>
+                            <option value="year">Year</option>
+                            <option value="all">All Time</option>
+                          </select>
+                        </div>
+
+                        <Show when={cashSummaryGroup() === "datetime"}>
+                          <div class="cashSummaryRange">
+                            <div class="field cashSummaryRangeField" style="margin: 0">
+                              <label for="cash_inquiry_from">From</label>
+                              <DateTimePicker
+                                id="cash_inquiry_from"
+                                value={cashSummaryFrom}
+                                onChange={setCashSummaryFrom}
+                                disabled={cashInquiryLoading() || cashLoading()}
+                              />
+                            </div>
+                            <div class="field cashSummaryRangeField" style="margin: 0">
+                              <label for="cash_inquiry_to">To</label>
+                              <DateTimePicker
+                                id="cash_inquiry_to"
+                                value={cashSummaryTo}
+                                onChange={setCashSummaryTo}
+                                minValue={cashSummaryFrom}
+                                disabled={cashInquiryLoading() || cashLoading()}
+                              />
+                            </div>
+                          </div>
+                        </Show>
+
+                        <div class="cashFilterActions">
+                          <button
+                            class="btn btnHero exportBtn"
+                            type="button"
+                            onClick={clearCashInquiryFilters}
+                            disabled={cashLoading()}
+                          >
+                            <span class="exportBtnInner">
+                              <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                              >
+                                <title>Clear</title>
+                                <path d="M5 5l14 14" />
+                                <path d="M19 5L5 19" />
+                              </svg>
+                              <span class="exportBtnText">Clear</span>
+                              <span class="exportBtnChevron" style="opacity: 0">
+                                ▾
+                              </span>
+                            </span>
+                          </button>
+                          <div class="exportWrap">
+                            <button
+                              class="btn btnHero exportBtn"
+                              type="button"
+                              disabled={
+                                cashLoading() || cashInquiryLoading() || Boolean(cashExporting())
+                              }
+                              aria-haspopup="menu"
+                              aria-expanded={cashExportOpen()}
+                              onClick={() => setCashExportOpen((v) => !v)}
+                            >
+                              <span class="exportBtnInner">
+                                {cashExporting() ? <span class="spinner" /> : null}
+                                {!cashExporting() ? (
+                                  <svg
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                  >
+                                    <title>Export</title>
+                                    <path d="M12 3v12" />
+                                    <path d="M7 8l5-5 5 5" />
+                                    <path d="M5 21h14a2 2 0 0 0 2-2v-4" />
+                                    <path d="M3 15v4a2 2 0 0 0 2 2" />
+                                  </svg>
+                                ) : null}
+                                <span class="exportBtnText">
+                                  {cashExporting() ? "Exporting…" : "Export"}
+                                </span>
+                                <span class="exportBtnChevron">{cashExportOpen() ? "▴" : "▾"}</span>
+                              </span>
+                            </button>
+                            <Show when={cashExportOpen()}>
+                              <div class="exportMenu" role="menu">
+                                <div class="exportMenuHeader">
+                                  <div class="exportMenuTitle">Export</div>
+                                  <div class="exportMenuSub">Choose a format</div>
+                                </div>
+                                <Show when={!cashInquiryHasActiveFilters()}>
+                                  <div class="exportMenuHint">
+                                    Select at least one filter to enable export.
+                                  </div>
+                                </Show>
+                                <div class="exportMenuGrid" role="presentation">
+                                  <For each={["pdf", "xlsx", "xml", "json", "csv"] as const}>
+                                    {(fmt) => (
+                                      <button
+                                        class="exportItem"
+                                        type="button"
+                                        role="menuitem"
+                                        disabled={
+                                          cashLoading() ||
+                                          cashInquiryLoading() ||
+                                          !cashInquiryHasActiveFilters() ||
+                                          Boolean(cashExporting())
+                                        }
+                                        onClick={() => {
+                                          setCashExportOpen(false);
+                                          void downloadCashExport(fmt);
+                                        }}
+                                      >
+                                        <span class="exportItemInner">
+                                          <span class="exportItemIcon" aria-hidden="true">
+                                            {fmt === "pdf" ? (
+                                              <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                              >
+                                                <title>PDF</title>
+                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                                <path d="M14 2v6h6" />
+                                                <path d="M8 13h8" />
+                                                <path d="M8 17h6" />
+                                              </svg>
+                                            ) : fmt === "xlsx" ? (
+                                              <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                              >
+                                                <title>XLSX</title>
+                                                <path d="M3 3h18v18H3z" />
+                                                <path d="M3 9h18" />
+                                                <path d="M9 21V9" />
+                                              </svg>
+                                            ) : fmt === "xml" ? (
+                                              <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                              >
+                                                <title>XML</title>
+                                                <path d="M8 6L3 12l5 6" />
+                                                <path d="M16 6l5 6-5 6" />
+                                                <path d="M10 19l4-14" />
+                                              </svg>
+                                            ) : fmt === "json" ? (
+                                              <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                              >
+                                                <title>JSON</title>
+                                                <path d="M8 7c0-2 1-3 3-3" />
+                                                <path d="M8 17c0 2 1 3 3 3" />
+                                                <path d="M16 7c0-2-1-3-3-3" />
+                                                <path d="M16 17c0 2-1 3-3 3" />
+                                              </svg>
+                                            ) : (
+                                              <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                              >
+                                                <title>CSV</title>
+                                                <path d="M4 6h16" />
+                                                <path d="M4 12h16" />
+                                                <path d="M4 18h16" />
+                                                <path d="M8 6v12" />
+                                                <path d="M16 6v12" />
+                                              </svg>
+                                            )}
+                                          </span>
+                                          <span
+                                            class="exportItemLabel"
+                                            style="text-transform: uppercase"
+                                          >
+                                            {fmt}
+                                          </span>
+                                        </span>
+                                      </button>
+                                    )}
+                                  </For>
+                                </div>
+                              </div>
+                            </Show>
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
                     <div class="cashData">
@@ -2233,31 +2718,8 @@ export default function Dashboard(props: DashboardProps) {
                         <div class="dashMenuLabel" style="margin: 0">
                           Inquiry
                         </div>
-                        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between">
-                          <div style="color: var(--muted); font-size: 13px">
-                            Page {cashPage()} of {cashTotalPages()} • Showing{" "}
-                            {Math.min(
-                              cashPageSize,
-                              Math.max(0, cashEntriesTotal() - (cashPage() - 1) * cashPageSize),
-                            )}{" "}
-                            of {cashEntriesTotal()}
-                          </div>
-                          <button
-                            class="btn"
-                            type="button"
-                            disabled={cashInquiryLoading() || cashPage() <= 1}
-                            onClick={() => setCashPage((p) => Math.max(1, p - 1))}
-                          >
-                            Prev
-                          </button>
-                          <button
-                            class="btn"
-                            type="button"
-                            disabled={cashInquiryLoading() || cashPage() >= cashTotalPages()}
-                            onClick={() => setCashPage((p) => Math.min(cashTotalPages(), p + 1))}
-                          >
-                            Next
-                          </button>
+                        <div style="color: var(--muted); font-size: 13px">
+                          Tap a row to view/edit.
                         </div>
                       </div>
                       <Show
@@ -2265,8 +2727,12 @@ export default function Dashboard(props: DashboardProps) {
                         fallback={
                           <div class="emptyCenter" style="margin-top: 12px">
                             <div class="emptyLogo">CY</div>
-                            <div class="emptyTitle">No cash records yet</div>
-                            <div class="emptyText">Add a cash record and it’ll show up here.</div>
+                            <div class="emptyTitle">No records found</div>
+                            <div class="emptyText">
+                              {cashInquiryHasActiveFilters()
+                                ? "Try adjusting filters to load records."
+                                : "Select at least one filter to load records."}
+                            </div>
                           </div>
                         }
                       >
@@ -2282,28 +2748,347 @@ export default function Dashboard(props: DashboardProps) {
                             <table class="cashTable">
                               <thead>
                                 <tr>
-                                  <th>Date</th>
-                                  <th>Type</th>
-                                  <th>Status</th>
-                                  <th>Order</th>
-                                  <th>Partner</th>
-                                  <th>Merchant</th>
-                                  <th>Base</th>
-                                  <th>Customer Fee</th>
-                                  <th>Merchant Fee</th>
-                                  <th>Net</th>
-                                  <th>From Merchant</th>
-                                  <th>To Customer</th>
+                                  <th
+                                    aria-sort={
+                                      cashInquirySortKey() === "transactionDate"
+                                        ? cashInquirySortDir() === "asc"
+                                          ? "ascending"
+                                          : "descending"
+                                        : "none"
+                                    }
+                                  >
+                                    <button
+                                      class="sortHeaderBtn"
+                                      type="button"
+                                      onClick={() => toggleCashInquirySort("transactionDate")}
+                                    >
+                                      <span>Date</span>
+                                      <span class="sortCaret">
+                                        {cashInquirySortKey() === "transactionDate"
+                                          ? cashInquirySortDir() === "asc"
+                                            ? "▴"
+                                            : "▾"
+                                          : "↕"}
+                                      </span>
+                                    </button>
+                                  </th>
+                                  <th
+                                    aria-sort={
+                                      cashInquirySortKey() === "cashType"
+                                        ? cashInquirySortDir() === "asc"
+                                          ? "ascending"
+                                          : "descending"
+                                        : "none"
+                                    }
+                                  >
+                                    <button
+                                      class="sortHeaderBtn"
+                                      type="button"
+                                      onClick={() => toggleCashInquirySort("cashType")}
+                                    >
+                                      <span>Type</span>
+                                      <span class="sortCaret">
+                                        {cashInquirySortKey() === "cashType"
+                                          ? cashInquirySortDir() === "asc"
+                                            ? "▴"
+                                            : "▾"
+                                          : "↕"}
+                                      </span>
+                                    </button>
+                                  </th>
+                                  <th
+                                    aria-sort={
+                                      cashInquirySortKey() === "status"
+                                        ? cashInquirySortDir() === "asc"
+                                          ? "ascending"
+                                          : "descending"
+                                        : "none"
+                                    }
+                                  >
+                                    <button
+                                      class="sortHeaderBtn"
+                                      type="button"
+                                      onClick={() => toggleCashInquirySort("status")}
+                                    >
+                                      <span>Status</span>
+                                      <span class="sortCaret">
+                                        {cashInquirySortKey() === "status"
+                                          ? cashInquirySortDir() === "asc"
+                                            ? "▴"
+                                            : "▾"
+                                          : "↕"}
+                                      </span>
+                                    </button>
+                                  </th>
+                                  <th
+                                    aria-sort={
+                                      cashInquirySortKey() === "orderNumber"
+                                        ? cashInquirySortDir() === "asc"
+                                          ? "ascending"
+                                          : "descending"
+                                        : "none"
+                                    }
+                                  >
+                                    <button
+                                      class="sortHeaderBtn"
+                                      type="button"
+                                      onClick={() => toggleCashInquirySort("orderNumber")}
+                                    >
+                                      <span>Order</span>
+                                      <span class="sortCaret">
+                                        {cashInquirySortKey() === "orderNumber"
+                                          ? cashInquirySortDir() === "asc"
+                                            ? "▴"
+                                            : "▾"
+                                          : "↕"}
+                                      </span>
+                                    </button>
+                                  </th>
+                                  <th
+                                    aria-sort={
+                                      cashInquirySortKey() === "remarks"
+                                        ? cashInquirySortDir() === "asc"
+                                          ? "ascending"
+                                          : "descending"
+                                        : "none"
+                                    }
+                                  >
+                                    <button
+                                      class="sortHeaderBtn"
+                                      type="button"
+                                      onClick={() => toggleCashInquirySort("remarks")}
+                                    >
+                                      <span>Remarks</span>
+                                      <span class="sortCaret">
+                                        {cashInquirySortKey() === "remarks"
+                                          ? cashInquirySortDir() === "asc"
+                                            ? "▴"
+                                            : "▾"
+                                          : "↕"}
+                                      </span>
+                                    </button>
+                                  </th>
+                                  <th
+                                    aria-sort={
+                                      cashInquirySortKey() === "partner"
+                                        ? cashInquirySortDir() === "asc"
+                                          ? "ascending"
+                                          : "descending"
+                                        : "none"
+                                    }
+                                  >
+                                    <button
+                                      class="sortHeaderBtn"
+                                      type="button"
+                                      onClick={() => toggleCashInquirySort("partner")}
+                                    >
+                                      <span>Partner</span>
+                                      <span class="sortCaret">
+                                        {cashInquirySortKey() === "partner"
+                                          ? cashInquirySortDir() === "asc"
+                                            ? "▴"
+                                            : "▾"
+                                          : "↕"}
+                                      </span>
+                                    </button>
+                                  </th>
+                                  <th
+                                    aria-sort={
+                                      cashInquirySortKey() === "merchant"
+                                        ? cashInquirySortDir() === "asc"
+                                          ? "ascending"
+                                          : "descending"
+                                        : "none"
+                                    }
+                                  >
+                                    <button
+                                      class="sortHeaderBtn"
+                                      type="button"
+                                      onClick={() => toggleCashInquirySort("merchant")}
+                                    >
+                                      <span>Merchant</span>
+                                      <span class="sortCaret">
+                                        {cashInquirySortKey() === "merchant"
+                                          ? cashInquirySortDir() === "asc"
+                                            ? "▴"
+                                            : "▾"
+                                          : "↕"}
+                                      </span>
+                                    </button>
+                                  </th>
+                                  <th
+                                    aria-sort={
+                                      cashInquirySortKey() === "totalAmount"
+                                        ? cashInquirySortDir() === "asc"
+                                          ? "ascending"
+                                          : "descending"
+                                        : "none"
+                                    }
+                                  >
+                                    <button
+                                      class="sortHeaderBtn"
+                                      type="button"
+                                      onClick={() => toggleCashInquirySort("totalAmount")}
+                                    >
+                                      <span>Base</span>
+                                      <span class="sortCaret">
+                                        {cashInquirySortKey() === "totalAmount"
+                                          ? cashInquirySortDir() === "asc"
+                                            ? "▴"
+                                            : "▾"
+                                          : "↕"}
+                                      </span>
+                                    </button>
+                                  </th>
+                                  <th
+                                    aria-sort={
+                                      cashInquirySortKey() === "grossFeeAmount"
+                                        ? cashInquirySortDir() === "asc"
+                                          ? "ascending"
+                                          : "descending"
+                                        : "none"
+                                    }
+                                  >
+                                    <button
+                                      class="sortHeaderBtn"
+                                      type="button"
+                                      onClick={() => toggleCashInquirySort("grossFeeAmount")}
+                                    >
+                                      <span>Customer Fee</span>
+                                      <span class="sortCaret">
+                                        {cashInquirySortKey() === "grossFeeAmount"
+                                          ? cashInquirySortDir() === "asc"
+                                            ? "▴"
+                                            : "▾"
+                                          : "↕"}
+                                      </span>
+                                    </button>
+                                  </th>
+                                  <th
+                                    aria-sort={
+                                      cashInquirySortKey() === "merchantFeeAmount"
+                                        ? cashInquirySortDir() === "asc"
+                                          ? "ascending"
+                                          : "descending"
+                                        : "none"
+                                    }
+                                  >
+                                    <button
+                                      class="sortHeaderBtn"
+                                      type="button"
+                                      onClick={() => toggleCashInquirySort("merchantFeeAmount")}
+                                    >
+                                      <span>Merchant Fee</span>
+                                      <span class="sortCaret">
+                                        {cashInquirySortKey() === "merchantFeeAmount"
+                                          ? cashInquirySortDir() === "asc"
+                                            ? "▴"
+                                            : "▾"
+                                          : "↕"}
+                                      </span>
+                                    </button>
+                                  </th>
+                                  <th
+                                    aria-sort={
+                                      cashInquirySortKey() === "netProfit"
+                                        ? cashInquirySortDir() === "asc"
+                                          ? "ascending"
+                                          : "descending"
+                                        : "none"
+                                    }
+                                  >
+                                    <button
+                                      class="sortHeaderBtn"
+                                      type="button"
+                                      onClick={() => toggleCashInquirySort("netProfit")}
+                                    >
+                                      <span>Net</span>
+                                      <span class="sortCaret">
+                                        {cashInquirySortKey() === "netProfit"
+                                          ? cashInquirySortDir() === "asc"
+                                            ? "▴"
+                                            : "▾"
+                                          : "↕"}
+                                      </span>
+                                    </button>
+                                  </th>
+                                  <th
+                                    aria-sort={
+                                      cashInquirySortKey() === "receiveFromMerchantAmount"
+                                        ? cashInquirySortDir() === "asc"
+                                          ? "ascending"
+                                          : "descending"
+                                        : "none"
+                                    }
+                                  >
+                                    <button
+                                      class="sortHeaderBtn"
+                                      type="button"
+                                      onClick={() =>
+                                        toggleCashInquirySort("receiveFromMerchantAmount")
+                                      }
+                                    >
+                                      <span>From Merchant</span>
+                                      <span class="sortCaret">
+                                        {cashInquirySortKey() === "receiveFromMerchantAmount"
+                                          ? cashInquirySortDir() === "asc"
+                                            ? "▴"
+                                            : "▾"
+                                          : "↕"}
+                                      </span>
+                                    </button>
+                                  </th>
+                                  <th
+                                    aria-sort={
+                                      cashInquirySortKey() === "payToCustomerAmount"
+                                        ? cashInquirySortDir() === "asc"
+                                          ? "ascending"
+                                          : "descending"
+                                        : "none"
+                                    }
+                                  >
+                                    <button
+                                      class="sortHeaderBtn"
+                                      type="button"
+                                      onClick={() => toggleCashInquirySort("payToCustomerAmount")}
+                                    >
+                                      <span>To Customer</span>
+                                      <span class="sortCaret">
+                                        {cashInquirySortKey() === "payToCustomerAmount"
+                                          ? cashInquirySortDir() === "asc"
+                                            ? "▴"
+                                            : "▾"
+                                          : "↕"}
+                                      </span>
+                                    </button>
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
-                                <For each={cashEntries()}>
+                                <For each={cashInquirySortedEntries()}>
                                   {(e) => (
                                     <tr class="cashRowClickable" onClick={() => openCashEdit(e)}>
-                                      <td>{e.transactionDate.slice(0, 19).replace("T", " ")}</td>
+                                      <td>{formatIsoLocal(e.transactionDate)}</td>
                                       <td>{e.cashType === "CASH_IN" ? "Cash In" : "Cash Out"}</td>
-                                      <td>{formatCashRecordStatus(e.status)}</td>
+                                      <td>
+                                        <span
+                                          class={`statusPill ${
+                                            e.status === "ACTIVE"
+                                              ? "statusPill--success"
+                                              : e.status === "PENDING"
+                                                ? "statusPill--pending"
+                                                : e.status === "INACTIVE"
+                                                  ? "statusPill--inactive"
+                                                  : e.status === "DELETED"
+                                                    ? "statusPill--deleted"
+                                                    : ""
+                                          }`}
+                                        >
+                                          {formatCashRecordStatus(e.status)}
+                                        </span>
+                                      </td>
                                       <td>{e.orderNumber}</td>
+                                      <td>{e.remarks ?? ""}</td>
                                       <td>{e.partner.name}</td>
                                       <td>{e.merchant.name}</td>
                                       <td>{formatIdr(e.totalAmount)}</td>
@@ -2318,6 +3103,36 @@ export default function Dashboard(props: DashboardProps) {
                               </tbody>
                             </table>
                           </div>
+                          <div class="cashTableFooter">
+                            <div class="cashTableFooterText">
+                              Page {cashPage()} of {cashTotalPages()} • Showing{" "}
+                              {Math.min(
+                                cashPageSize,
+                                Math.max(0, cashEntriesTotal() - (cashPage() - 1) * cashPageSize),
+                              )}{" "}
+                              of {cashEntriesTotal()}
+                            </div>
+                            <div class="cashTableFooterActions">
+                              <button
+                                class="btn"
+                                type="button"
+                                disabled={cashInquiryLoading() || cashPage() <= 1}
+                                onClick={() => setCashPage((p) => Math.max(1, p - 1))}
+                              >
+                                Prev
+                              </button>
+                              <button
+                                class="btn"
+                                type="button"
+                                disabled={cashInquiryLoading() || cashPage() >= cashTotalPages()}
+                                onClick={() =>
+                                  setCashPage((p) => Math.min(cashTotalPages(), p + 1))
+                                }
+                              >
+                                Next
+                              </button>
+                            </div>
+                          </div>
                         </Show>
                       </Show>
                     </div>
@@ -2326,14 +3141,54 @@ export default function Dashboard(props: DashboardProps) {
 
                 <Show when={menuSection() === "PAYMENTS"}>
                   <Show when={!readOnly() && shareUrl()}>
-                    <div style="margin-top: 12px; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap">
-                      <h2 class="sectionH2">Share:</h2>
-                      <div class="segmented" style="margin-left: auto">
+                    <div class="sharePanel">
+                      <div class="sharePanelTop">
+                        <div>
+                          <div class="shareTitle">Share</div>
+                          <div class="shareSub">
+                            Share a read-only dashboard link. The default view is applied
+                            automatically.
+                          </div>
+                        </div>
+                        <div class="field shareDefaultField" style="margin: 0">
+                          <label for="share_default_view">Default View</label>
+                          <select
+                            id="share_default_view"
+                            class="select"
+                            value={shareDefaultView()}
+                            onChange={(e) =>
+                              setShareDefaultView(
+                                e.currentTarget.value as "CATEGORY" | "MERCHANT" | "LINK" | "QRIS",
+                              )
+                            }
+                          >
+                            <option value="CATEGORY">Category</option>
+                            <option value="MERCHANT">Merchant</option>
+                            <option value="LINK">Payment Link/s</option>
+                            <option value="QRIS">QRIS</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div class="sharePanelGrid">
+                        <div class="field" style="margin: 0">
+                          <label for="share_url">Share URL</label>
+                          <input
+                            id="share_url"
+                            value={shareUrlWithView() ?? ""}
+                            readOnly
+                            placeholder="Share URL will appear here…"
+                            onFocus={(e) => e.currentTarget.select()}
+                          />
+                        </div>
+                      </div>
+
+                      <div class="sharePanelActions">
                         <button
-                          class="segBtn"
+                          class="btn btnWide"
                           type="button"
                           onClick={() => {
-                            const url = shareUrl();
+                            const url = shareUrlWithView();
                             if (!url) return;
                             openUrl("share-open", url);
                           }}
@@ -2344,11 +3199,11 @@ export default function Dashboard(props: DashboardProps) {
                           </span>
                         </button>
                         <button
-                          class="segBtn"
+                          class="btn btnPrimary btnWide"
                           type="button"
                           onClick={async () => {
                             try {
-                              const url = shareUrl();
+                              const url = shareUrlWithView();
                               if (!url) return;
                               await navigator.clipboard.writeText(url);
                               showToast("success", "Link copied.");
@@ -2752,7 +3607,7 @@ export default function Dashboard(props: DashboardProps) {
             </div>
 
             <Show when={!readOnly() && menuSection() === "PAYMENTS"}>
-              <div style="grid-column: span 4; display: grid; gap: 16px">
+              <div class="colSpan4" style="display: grid; gap: 16px">
                 <div class="card">
                   <div class="cardInner" style="display: grid; gap: 12px">
                     <div style="font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted)">
@@ -3145,6 +4000,17 @@ export default function Dashboard(props: DashboardProps) {
                       </div>
 
                       <div class="field">
+                        <label for="cash_tx_remarks">Remarks</label>
+                        <textarea
+                          id="cash_tx_remarks"
+                          class="textarea"
+                          value={cashTxRemarks()}
+                          onInput={(e) => setCashTxRemarks(e.currentTarget.value)}
+                          placeholder="Optional notes…"
+                        />
+                      </div>
+
+                      <div class="field">
                         <label for="cash_tx_total">
                           Base Total (IDR)<span class="fieldReq">*</span>
                         </label>
@@ -3230,47 +4096,80 @@ export default function Dashboard(props: DashboardProps) {
                         </div>
                       </div>
 
-                      <div class="cashCalcNote">Fee breakdown (calculated from Base Total)</div>
-                      <div class="cashBreakdownGrid">
-                        <div class="cashCalcCard">
-                          <div class="cashCalcLabel">Base Total</div>
-                          <div class="cashCalcValue">{formatMaybeIdr(cashBaseAmountValue())}</div>
-                        </div>
-                        <div class="cashCalcCard">
-                          <div class="cashCalcLabel">Merchant Fee %</div>
-                          <div class="cashCalcValue">
-                            {formatMaybePercent(cashMerchantFeePercentValue())}
+                      <div class="cashCalcPanel">
+                        <div class="cashCalcPanelHeader">
+                          <div>
+                            <div class="cashCalcPanelTitle">Fee breakdown</div>
+                            <div class="cashCalcPanelSub">Calculated from Base Total</div>
                           </div>
                         </div>
-                        <div class="cashCalcCard">
-                          <div class="cashCalcLabel">Merchant Fee (IDR)</div>
-                          <div class="cashCalcValue">{formatMaybeIdr(cashMerchantFeeAmount())}</div>
-                        </div>
-                        <div class="cashCalcCard">
-                          <div class="cashCalcLabel">From Merchant</div>
-                          <div class="cashCalcValue">
-                            {formatMaybeIdr(cashReceiveFromMerchantAmount())}
+                        <div class="cashCalcPanelGrid">
+                          <div class="cashCalcHero cashCalcHero--base">
+                            <div class="cashCalcHeroLabel">Base Total</div>
+                            <div class="cashCalcHeroValue">
+                              {formatMaybeIdr(cashBaseAmountValue())}
+                            </div>
                           </div>
-                        </div>
-                        <div class="cashCalcCard">
-                          <div class="cashCalcLabel">Customer Fee %</div>
-                          <div class="cashCalcValue">
-                            {formatMaybePercent(cashCustomerFeePercentValue())}
+                          <div
+                            classList={{
+                              cashCalcHero: true,
+                              "cashCalcHero--profit": true,
+                              "cashCalcHero--negative": cashNetProfitIsNegative(),
+                            }}
+                          >
+                            <div class="cashCalcHeroLabel">Net Profit</div>
+                            <div class="cashCalcHeroValue">
+                              {formatMaybeIdr(cashNetProfitAmount())}
+                            </div>
                           </div>
-                        </div>
-                        <div class="cashCalcCard">
-                          <div class="cashCalcLabel">Customer Fee (IDR)</div>
-                          <div class="cashCalcValue">{formatMaybeIdr(cashGrossFeeAmount())}</div>
-                        </div>
-                        <div class="cashCalcCard">
-                          <div class="cashCalcLabel">To Customer</div>
-                          <div class="cashCalcValue">
-                            {formatMaybeIdr(cashPayToCustomerAmount())}
+
+                          <div class="cashCalcGroup">
+                            <div class="cashCalcGroupTitle">Fees</div>
+                            <div class="cashCalcGrid">
+                              <div class="cashCalcCard">
+                                <div class="cashCalcLabel">Merchant Fee %</div>
+                                <div class="cashCalcValue">
+                                  {formatMaybePercent(cashMerchantFeePercentValue())}
+                                </div>
+                              </div>
+                              <div class="cashCalcCard">
+                                <div class="cashCalcLabel">Merchant Fee (IDR)</div>
+                                <div class="cashCalcValue">
+                                  {formatMaybeIdr(cashMerchantFeeAmount())}
+                                </div>
+                              </div>
+                              <div class="cashCalcCard">
+                                <div class="cashCalcLabel">Customer Fee %</div>
+                                <div class="cashCalcValue">
+                                  {formatMaybePercent(cashCustomerFeePercentValue())}
+                                </div>
+                              </div>
+                              <div class="cashCalcCard">
+                                <div class="cashCalcLabel">Customer Fee (IDR)</div>
+                                <div class="cashCalcValue">
+                                  {formatMaybeIdr(cashGrossFeeAmount())}
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                        <div class="cashCalcCard">
-                          <div class="cashCalcLabel">Profit</div>
-                          <div class="cashCalcValue">{formatMaybeIdr(cashNetProfitAmount())}</div>
+
+                          <div class="cashCalcGroup">
+                            <div class="cashCalcGroupTitle">Settlement</div>
+                            <div class="cashCalcGrid">
+                              <div class="cashCalcCard">
+                                <div class="cashCalcLabel">From Merchant</div>
+                                <div class="cashCalcValue">
+                                  {formatMaybeIdr(cashReceiveFromMerchantAmount())}
+                                </div>
+                              </div>
+                              <div class="cashCalcCard">
+                                <div class="cashCalcLabel">To Customer</div>
+                                <div class="cashCalcValue">
+                                  {formatMaybeIdr(cashPayToCustomerAmount())}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                       <Show when={cashNetProfitIsNegative()}>
@@ -3304,8 +4203,8 @@ export default function Dashboard(props: DashboardProps) {
               setCashEditId(null);
             }}
           >
-            <div style="display: grid; gap: 14px">
-              <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+            <div class="cashModal">
+              <div class="cashModalHeader">
                 <div>
                   <div style="font-weight: 800; letter-spacing: -0.02em; font-size: 20px">
                     Edit Cash Record
@@ -3326,7 +4225,7 @@ export default function Dashboard(props: DashboardProps) {
                 </button>
               </div>
 
-              <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+              <div class="cashModalGrid2">
                 <div class="field" style="margin: 0">
                   <label for="cash_edit_type">
                     Cash Flow Type<span class="fieldReq">*</span>
@@ -3364,7 +4263,7 @@ export default function Dashboard(props: DashboardProps) {
                 </div>
               </div>
 
-              <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+              <div class="cashModalGrid2">
                 <div class="field" style="margin: 0">
                   <label for="cash_edit_date">
                     Transaction Date<span class="fieldReq">*</span>
@@ -3385,12 +4284,25 @@ export default function Dashboard(props: DashboardProps) {
                     id="cash_edit_order"
                     value={cashEditOrderNumber()}
                     onInput={(e) => setCashEditOrderNumber(e.currentTarget.value)}
+                    placeholder="e.g. ORD-2026-0001"
                     disabled={Boolean(cashMutating())}
                   />
                 </div>
               </div>
 
-              <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+              <div class="field" style="margin: 0">
+                <label for="cash_edit_remarks">Remarks</label>
+                <textarea
+                  id="cash_edit_remarks"
+                  class="textarea"
+                  value={cashEditRemarks()}
+                  onInput={(e) => setCashEditRemarks(e.currentTarget.value)}
+                  placeholder="Optional notes…"
+                  disabled={Boolean(cashMutating())}
+                />
+              </div>
+
+              <div class="cashModalGrid2">
                 <div class="field" style="margin: 0">
                   <label for="cash_edit_total">
                     Base Total (IDR)<span class="fieldReq">*</span>
@@ -3400,6 +4312,7 @@ export default function Dashboard(props: DashboardProps) {
                     inputmode="numeric"
                     value={cashEditTotalAmount()}
                     onInput={(e) => setCashEditTotalAmount(e.currentTarget.value)}
+                    placeholder="e.g. 1000000"
                     disabled={Boolean(cashMutating())}
                   />
                 </div>
@@ -3418,6 +4331,7 @@ export default function Dashboard(props: DashboardProps) {
                       max="100"
                       value={cashEditCustomerFeePercent()}
                       onInput={(e) => setCashEditCustomerFeePercent(e.currentTarget.value)}
+                      placeholder="e.g. 1.25"
                       disabled={Boolean(cashMutating())}
                     />
                     <span class="suffixFieldText">%</span>
@@ -3425,7 +4339,7 @@ export default function Dashboard(props: DashboardProps) {
                 </div>
               </div>
 
-              <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+              <div class="cashModalGrid2">
                 <div class="field" style="margin: 0">
                   <label for="cash_edit_merchant_fee">
                     Merchant Fee (% of base)<span class="fieldReq">*</span>
@@ -3440,6 +4354,7 @@ export default function Dashboard(props: DashboardProps) {
                       max="100"
                       value={cashEditMerchantFeePercent()}
                       onInput={(e) => setCashEditMerchantFeePercent(e.currentTarget.value)}
+                      placeholder="e.g. 0.75"
                       disabled={Boolean(cashMutating())}
                     />
                     <span class="suffixFieldText">%</span>
@@ -3479,49 +4394,72 @@ export default function Dashboard(props: DashboardProps) {
                 </select>
               </div>
 
-              <div class="cashCalcNote">Fee breakdown (calculated from Base Total)</div>
-              <div class="cashBreakdownGrid">
-                <div class="cashCalcCard">
-                  <div class="cashCalcLabel">Base Total</div>
-                  <div class="cashCalcValue">{formatMaybeIdr(cashEditBaseAmountValue())}</div>
-                </div>
-                <div class="cashCalcCard">
-                  <div class="cashCalcLabel">Merchant Fee %</div>
-                  <div class="cashCalcValue">
-                    {formatMaybePercent(cashEditMerchantFeePercentValue())}
+              <div class="cashCalcPanel">
+                <div class="cashCalcPanelHeader">
+                  <div>
+                    <div class="cashCalcPanelTitle">Fee breakdown</div>
+                    <div class="cashCalcPanelSub">Calculated from Base Total</div>
                   </div>
                 </div>
-                <div class="cashCalcCard">
-                  <div class="cashCalcLabel">Merchant Fee (IDR)</div>
-                  <div class="cashCalcValue">{formatMaybeIdr(cashEditMerchantFeeAmount())}</div>
-                </div>
-                <div class="cashCalcCard">
-                  <div class="cashCalcLabel">From Merchant</div>
-                  <div class="cashCalcValue">
-                    {formatMaybeIdr(cashEditReceiveFromMerchantAmount())}
+                <div class="cashCalcPanelGrid">
+                  <div class="cashCalcHero cashCalcHero--base">
+                    <div class="cashCalcHeroLabel">Base Total</div>
+                    <div class="cashCalcHeroValue">{formatMaybeIdr(cashEditBaseAmountValue())}</div>
                   </div>
-                </div>
-                <div class="cashCalcCard">
-                  <div class="cashCalcLabel">Customer Fee %</div>
-                  <div class="cashCalcValue">
-                    {formatMaybePercent(cashEditCustomerFeePercentValue())}
+                  <div class="cashCalcHero cashCalcHero--profit">
+                    <div class="cashCalcHeroLabel">Net Profit</div>
+                    <div class="cashCalcHeroValue">{formatMaybeIdr(cashEditNetProfitAmount())}</div>
                   </div>
-                </div>
-                <div class="cashCalcCard">
-                  <div class="cashCalcLabel">Customer Fee (IDR)</div>
-                  <div class="cashCalcValue">{formatMaybeIdr(cashEditGrossFeeAmount())}</div>
-                </div>
-                <div class="cashCalcCard">
-                  <div class="cashCalcLabel">To Customer</div>
-                  <div class="cashCalcValue">{formatMaybeIdr(cashEditPayToCustomerAmount())}</div>
-                </div>
-                <div class="cashCalcCard">
-                  <div class="cashCalcLabel">Profit</div>
-                  <div class="cashCalcValue">{formatMaybeIdr(cashEditNetProfitAmount())}</div>
+
+                  <div class="cashCalcGroup">
+                    <div class="cashCalcGroupTitle">Fees</div>
+                    <div class="cashCalcGrid">
+                      <div class="cashCalcCard">
+                        <div class="cashCalcLabel">Merchant Fee %</div>
+                        <div class="cashCalcValue">
+                          {formatMaybePercent(cashEditMerchantFeePercentValue())}
+                        </div>
+                      </div>
+                      <div class="cashCalcCard">
+                        <div class="cashCalcLabel">Merchant Fee (IDR)</div>
+                        <div class="cashCalcValue">
+                          {formatMaybeIdr(cashEditMerchantFeeAmount())}
+                        </div>
+                      </div>
+                      <div class="cashCalcCard">
+                        <div class="cashCalcLabel">Customer Fee %</div>
+                        <div class="cashCalcValue">
+                          {formatMaybePercent(cashEditCustomerFeePercentValue())}
+                        </div>
+                      </div>
+                      <div class="cashCalcCard">
+                        <div class="cashCalcLabel">Customer Fee (IDR)</div>
+                        <div class="cashCalcValue">{formatMaybeIdr(cashEditGrossFeeAmount())}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="cashCalcGroup">
+                    <div class="cashCalcGroupTitle">Settlement</div>
+                    <div class="cashCalcGrid">
+                      <div class="cashCalcCard">
+                        <div class="cashCalcLabel">From Merchant</div>
+                        <div class="cashCalcValue">
+                          {formatMaybeIdr(cashEditReceiveFromMerchantAmount())}
+                        </div>
+                      </div>
+                      <div class="cashCalcCard">
+                        <div class="cashCalcLabel">To Customer</div>
+                        <div class="cashCalcValue">
+                          {formatMaybeIdr(cashEditPayToCustomerAmount())}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap">
+              <div class="cashModalActions">
                 <button
                   class="btn"
                   type="button"
@@ -3548,62 +4486,159 @@ export default function Dashboard(props: DashboardProps) {
             </div>
           </Modal>
 
-          <Modal open={cashAdvancedOpen()} onClose={() => setCashAdvancedOpen(false)}>
+          <Modal open={cashInquiryFilterOpen()} onClose={() => setCashInquiryFilterOpen(false)}>
             <div style="display: grid; gap: 14px">
               <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
                 <div>
                   <div style="font-weight: 800; letter-spacing: -0.02em; font-size: 20px">
-                    Advanced Filters
+                    Inquiry
                   </div>
                   <div style="color: var(--muted); font-size: 13px; margin-top: 2px">
-                    Filter by partner name and/or merchant name.
+                    Run an inquiry. If you leave filters empty, it fetches today’s transactions.
                   </div>
                 </div>
-                <button class="btn" type="button" onClick={() => setCashAdvancedOpen(false)}>
+                <button class="btn" type="button" onClick={() => setCashInquiryFilterOpen(false)}>
                   Close
                 </button>
               </div>
 
-              <div class="field">
-                <label for="cash_adv_partner">Partner Name</label>
-                <input
-                  id="cash_adv_partner"
-                  value={cashAdvPartnerName()}
-                  onInput={(e) => setCashAdvPartnerName(e.currentTarget.value)}
-                  placeholder="e.g. BCA, Dana, etc."
-                />
-              </div>
-              <div class="field">
-                <label for="cash_adv_merchant">Merchant Name</label>
-                <input
-                  id="cash_adv_merchant"
-                  value={cashAdvMerchantName()}
-                  onInput={(e) => setCashAdvMerchantName(e.currentTarget.value)}
-                  placeholder="e.g. Warung Sate Pak Dimas"
-                />
+              <div class="cashInquiryControls">
+                <div class="field cashInquiryField" style="margin: 0">
+                  <label for="cash_inquiry_type">Cash Flow Type</label>
+                  <select
+                    id="cash_inquiry_type"
+                    class="select"
+                    value={cashInquiryCashType()}
+                    onChange={(e) =>
+                      setCashInquiryCashType(
+                        e.currentTarget.value as "ALL" | "CASH_IN" | "CASH_OUT",
+                      )
+                    }
+                    disabled={cashLoading()}
+                  >
+                    <option value="ALL">All</option>
+                    <option value="CASH_IN">Cash In</option>
+                    <option value="CASH_OUT">Cash Out</option>
+                  </select>
+                </div>
+                <div class="field cashInquiryField" style="margin: 0">
+                  <label for="cash_inquiry_group">Period</label>
+                  <select
+                    id="cash_inquiry_group"
+                    class="select"
+                    value={cashInquiryGroup()}
+                    onChange={(e) =>
+                      setCashInquiryGroup(
+                        e.currentTarget.value as
+                          | "datetime"
+                          | "day"
+                          | "week"
+                          | "month"
+                          | "year"
+                          | "all",
+                      )
+                    }
+                    disabled={cashLoading()}
+                  >
+                    <option value="datetime">Date/Time</option>
+                    <option value="day">Day</option>
+                    <option value="week">Week</option>
+                    <option value="month">Month</option>
+                    <option value="year">Year</option>
+                    <option value="all">All Time</option>
+                  </select>
+                </div>
+
+                <Show when={cashInquiryGroup() === "datetime"}>
+                  <div class="field cashInquiryField" style="margin: 0">
+                    <label for="cash_inquiry_from">From</label>
+                    <DateTimePicker
+                      id="cash_inquiry_from"
+                      value={cashInquiryFrom}
+                      onChange={setCashInquiryFrom}
+                      disabled={cashInquiryLoading() || cashLoading()}
+                    />
+                  </div>
+                  <div class="field cashInquiryField" style="margin: 0">
+                    <label for="cash_inquiry_to">To</label>
+                    <DateTimePicker
+                      id="cash_inquiry_to"
+                      value={cashInquiryTo}
+                      onChange={setCashInquiryTo}
+                      minValue={cashInquiryFrom}
+                      disabled={cashInquiryLoading() || cashLoading()}
+                    />
+                  </div>
+                </Show>
+                <div class="field cashInquiryField" style="margin: 0">
+                  <label for="cash_inquiry_merchant">Merchant</label>
+                  <select
+                    id="cash_inquiry_merchant"
+                    class="select"
+                    value={cashInquiryMerchantId()}
+                    onChange={(e) => setCashInquiryMerchantId(e.currentTarget.value)}
+                    disabled={cashLoading()}
+                  >
+                    <option value="">All</option>
+                    <Show when={cashInquiryMerchantMissing()}>
+                      <option value={cashInquiryMerchantId()}>
+                        Selected merchant (unavailable)
+                      </option>
+                    </Show>
+                    <For each={cashMerchants()}>
+                      {(m) => <option value={m.id}>{m.name}</option>}
+                    </For>
+                  </select>
+                </div>
+                <div class="field cashInquiryField" style="margin: 0">
+                  <label for="cash_inquiry_partner">Partner</label>
+                  <select
+                    id="cash_inquiry_partner"
+                    class="select"
+                    value={cashInquiryPartnerId()}
+                    onChange={(e) => setCashInquiryPartnerId(e.currentTarget.value)}
+                    disabled={cashLoading()}
+                  >
+                    <option value="">All</option>
+                    <Show when={cashInquiryPartnerMissing()}>
+                      <option value={cashInquiryPartnerId()}>Selected partner (unavailable)</option>
+                    </Show>
+                    <For each={cashPartners()}>{(p) => <option value={p.id}>{p.name}</option>}</For>
+                  </select>
+                </div>
               </div>
 
               <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap">
-                <button
-                  class="btn"
-                  type="button"
-                  onClick={() => {
-                    setCashAdvPartnerName("");
-                    setCashAdvMerchantName("");
-                  }}
-                >
-                  Clear
+                <button class="btn" type="button" onClick={clearCashInquiryFilters}>
+                  <span style="display: inline-flex; gap: 10px; align-items: center">
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <title>Clear</title>
+                      <path d="M5 5l14 14" />
+                      <path d="M19 5L5 19" />
+                    </svg>
+                    <span>Clear</span>
+                  </span>
                 </button>
                 <button
                   class="btn btnPrimary"
                   type="button"
                   onClick={() => {
-                    setCashAdvancedOpen(false);
-                    setCashPage(1);
-                    void refreshCashAll({ showSpinner: true });
+                    setCashInquiryFilterOpen(false);
+                    void runCashInquiry();
                   }}
+                  disabled={cashInquiryLoading() || cashLoading()}
                 >
-                  Apply
+                  <span style="display: inline-flex; gap: 10px; align-items: center">
+                    {cashInquiryLoading() ? <span class="spinner" /> : null}
+                    <span>{cashInquiryLoading() ? "Running…" : "Inquiry"}</span>
+                  </span>
                 </button>
               </div>
             </div>
@@ -3633,7 +4668,7 @@ export default function Dashboard(props: DashboardProps) {
                       type="button"
                       onClick={() => setTab("LINK")}
                     >
-                      Payment Links
+                      Payment Link/s
                     </button>
                     <button
                       class={`btn ${tab() === "QRIS" ? "btnPrimary" : ""}`}

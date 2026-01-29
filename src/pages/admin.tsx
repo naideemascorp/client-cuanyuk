@@ -617,7 +617,7 @@ export default function Admin() {
             </div>
           </div>
           <div class="grid">
-            <div class="card" style="grid-column: span 5; padding: 0">
+            <div class="card colSpan5" style="padding: 0">
               <div class="cardInner" style="display: grid; gap: 12px">
                 <div class="skeleton" style="height: 14px; width: 52%; border-radius: 10px" />
                 <div class="skeleton" style="height: 44px; width: 100%; border-radius: 14px" />
@@ -626,7 +626,7 @@ export default function Admin() {
                 <div class="skeleton" style="height: 44px; width: 100%; border-radius: 14px" />
               </div>
             </div>
-            <div class="card" style="grid-column: span 7; padding: 0">
+            <div class="card colSpan7" style="padding: 0">
               <div class="cardInner" style="display: grid; gap: 10px">
                 <For each={[1, 2, 3, 4, 5, 6]}>
                   {() => (
@@ -717,7 +717,7 @@ export default function Admin() {
 
                 <Show when={tab() === "notifications"}>
                   <div class="grid">
-                    <div class="card" style="grid-column: span 5">
+                    <div class="card colSpan5">
                       <div class="cardInner" style="display: grid; gap: 16px">
                         <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
                           <div style="font-weight: 650; letter-spacing: -0.01em">
@@ -916,7 +916,7 @@ export default function Admin() {
                       </div>
                     </div>
 
-                    <div class="card" style="grid-column: span 7">
+                    <div class="card colSpan7">
                       <div class="cardInner" style="display: grid; gap: 12px">
                         <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
                           <div style="font-weight: 650; letter-spacing: -0.01em">
@@ -1254,7 +1254,7 @@ export default function Admin() {
 
                 <Show when={tab() === "ips"}>
                   <div class="grid">
-                    <div class="card" style="grid-column: span 5">
+                    <div class="card colSpan5">
                       <div class="cardInner" style="display: grid; gap: 12px">
                         <div style="font-weight: 650; letter-spacing: -0.01em">
                           Create/Update Device
@@ -1324,7 +1324,7 @@ export default function Admin() {
                       </div>
                     </div>
 
-                    <div class="card" style="grid-column: span 7">
+                    <div class="card colSpan7">
                       <div class="cardInner" style="display: grid; gap: 12px">
                         <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
                           <div style="font-weight: 650; letter-spacing: -0.01em">
@@ -1562,7 +1562,7 @@ export default function Admin() {
 
                 <Show when={tab() === "users"}>
                   <div class="grid">
-                    <div class="card" style="grid-column: span 5">
+                    <div class="card colSpan5">
                       <div class="cardInner updateUserCardInner" style="display: grid; gap: 12px">
                         <div style="font-weight: 650; letter-spacing: -0.01em">Update User</div>
                         <Show when={!editingUserId()}>
@@ -1648,7 +1648,7 @@ export default function Admin() {
                       </div>
                     </div>
 
-                    <div class="card" style="grid-column: span 7">
+                    <div class="card colSpan7">
                       <div class="cardInner" style="display: grid; gap: 12px">
                         <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap">
                           <div style="font-weight: 650; letter-spacing: -0.01em">

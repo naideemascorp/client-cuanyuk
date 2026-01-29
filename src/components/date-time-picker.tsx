@@ -1,4 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { Portal } from "solid-js/web";
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
@@ -7,8 +8,27 @@ const toLocalValue = (d: Date) =>
 
 const parseLocalValue = (raw: string) => {
   if (!raw) return null;
-  const cleaned = raw.trim().replace(/\s+/g, " ").replace(" ", "T");
-  const d = new Date(cleaned);
+  const cleaned = raw.trim().replace(/\s+/g, " ");
+  if (!cleaned) return null;
+  const normalized = cleaned.includes("T") ? cleaned : cleaned.replace(" ", "T");
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(normalized);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const hour = Number(m[4]);
+  const minute = Number(m[5]);
+  const second = m[6] ? Number(m[6]) : 0;
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute) ||
+    !Number.isFinite(second)
+  )
+    return null;
+  const d = new Date(year, month - 1, day, hour, minute, second, 0);
   if (!Number.isFinite(d.getTime())) return null;
   return d;
 };
@@ -58,6 +78,8 @@ export function DateTimePicker(props: {
     return d ? d.getTime() : null;
   });
 
+  const dayStartMs = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
   const openPicker = () => {
     if (props.disabled) return;
     const current = parseLocalValue(props.value()) ?? new Date();
@@ -73,7 +95,10 @@ export function DateTimePicker(props: {
       if (!open()) return;
       const el = wrapEl;
       if (!el) return;
-      if (e.target instanceof Node && el.contains(e.target)) return;
+      const t = e.target;
+      if (!(t instanceof Node)) return;
+      if (el.contains(t)) return;
+      if (panelEl?.contains(t)) return;
       closePicker();
     };
     globalThis.addEventListener("mousedown", onDown);
@@ -96,7 +121,7 @@ export function DateTimePicker(props: {
       let top = Math.round(rect.bottom + 10);
       const panelH = panelEl?.offsetHeight ?? 420;
       if (vw <= 520) {
-        top = 86;
+        top = 12;
         setPanelPos({ top, left: 12, width: vw - 24 });
         return;
       }
@@ -119,8 +144,8 @@ export function DateTimePicker(props: {
     const min = minMs();
     const d = draft();
     if (min == null || !d) return;
-    if (d.getTime() > min) return;
-    setDraft(new Date(min + 60_000));
+    if (d.getTime() >= min) return;
+    setDraft(new Date(min));
   });
 
   const days = createMemo(() => {
@@ -143,6 +168,12 @@ export function DateTimePicker(props: {
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate();
 
+  const clampToMin = (d: Date) => {
+    const min = minMs();
+    if (min == null) return d;
+    return d.getTime() < min ? new Date(min) : d;
+  };
+
   const selectDay = (d: Date) => {
     const cur = draft() ?? new Date();
     const next = new Date(
@@ -154,41 +185,40 @@ export function DateTimePicker(props: {
       0,
       0,
     );
-    setDraft(next);
+    setDraft(clampToMin(next));
   };
 
   const setTime = (hour: number, minute: number) => {
     const cur = draft() ?? new Date();
     const next = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate(), hour, minute, 0, 0);
-    setDraft(next);
+    setDraft(clampToMin(next));
   };
 
   const canPick = (d: Date) => {
     const min = minMs();
     if (min == null) return true;
-    const cur = draft() ?? new Date();
-    const candidate = new Date(
-      d.getFullYear(),
-      d.getMonth(),
-      d.getDate(),
-      cur.getHours(),
-      cur.getMinutes(),
-      0,
-      0,
-    );
-    return candidate.getTime() > min;
+    const minDate = new Date(min);
+    return dayStartMs(d) >= dayStartMs(minDate);
   };
 
   const apply = () => {
     const d = draft();
     if (!d) return;
     const min = minMs();
-    if (min != null && d.getTime() <= min) return;
+    if (min != null && d.getTime() < min) return;
     props.onChange(toLocalValue(d));
     setText(
       `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`,
     );
     closePicker();
+  };
+
+  const jumpToday = () => {
+    const n = new Date();
+    n.setSeconds(0, 0);
+    const next = clampToMin(n);
+    setDraft(next);
+    setViewMonth(new Date(next.getFullYear(), next.getMonth(), 1, 0, 0, 0, 0));
   };
 
   const display = createMemo(() => {
@@ -212,7 +242,7 @@ export function DateTimePicker(props: {
       return;
     }
     const min = minMs();
-    if (min != null && d.getTime() <= min) {
+    if (min != null && d.getTime() < min) {
       setText(display());
       return;
     }
@@ -242,6 +272,7 @@ export function DateTimePicker(props: {
         onFocus={() => setEditing(true)}
         onBlur={() => {
           setEditing(false);
+          if (open()) return;
           applyManual();
         }}
         onInput={(e) => setText(e.currentTarget.value)}
@@ -289,103 +320,114 @@ export function DateTimePicker(props: {
       </button>
 
       <Show when={open()}>
-        <div
-          class="dtpPanel"
-          style={{
-            top: `${panelPos().top}px`,
-            left: `${panelPos().left}px`,
-            width: `${panelPos().width}px`,
-          }}
-          ref={(el) => {
-            panelEl = el;
-          }}
-        >
-          <div class="dtpHeader">
-            <button
-              class="dtpNav"
-              type="button"
-              onClick={() => {
-                const m = viewMonth();
-                setViewMonth(new Date(m.getFullYear(), m.getMonth() - 1, 1));
-              }}
-              aria-label="Previous month"
-            >
-              ‹
-            </button>
-            <div class="dtpMonth">{monthLabel(viewMonth())}</div>
-            <button
-              class="dtpNav"
-              type="button"
-              onClick={() => {
-                const m = viewMonth();
-                setViewMonth(new Date(m.getFullYear(), m.getMonth() + 1, 1));
-              }}
-              aria-label="Next month"
-            >
-              ›
-            </button>
-          </div>
+        <Portal>
+          <div
+            class="dtpPanel"
+            style={{
+              top: `${panelPos().top}px`,
+              left: `${panelPos().left}px`,
+              width: `${panelPos().width}px`,
+            }}
+            ref={(el) => {
+              panelEl = el;
+            }}
+          >
+            <div class="dtpHeader">
+              <button
+                class="dtpNav"
+                type="button"
+                onClick={() => {
+                  const m = viewMonth();
+                  setViewMonth(new Date(m.getFullYear(), m.getMonth() - 1, 1));
+                }}
+                aria-label="Previous month"
+              >
+                ‹
+              </button>
+              <div class="dtpMonth">{monthLabel(viewMonth())}</div>
+              <button
+                class="dtpNav"
+                type="button"
+                onClick={() => {
+                  const m = viewMonth();
+                  setViewMonth(new Date(m.getFullYear(), m.getMonth() + 1, 1));
+                }}
+                aria-label="Next month"
+              >
+                ›
+              </button>
+            </div>
 
-          <div class="dtpDow">
-            <For each={["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]}>
-              {(d) => <div>{d}</div>}
-            </For>
-          </div>
-
-          <div class="dtpGrid">
-            <For each={days()}>
-              {(d) => {
-                const inMonth = d.getMonth() === viewMonth().getMonth();
-                const cur = draft();
-                const selected = cur ? isSameDay(cur, d) : false;
-                const disabled = !canPick(d);
-                const cls = `dtpDay ${inMonth ? "" : "dtpDay--dim"} ${selected ? "dtpDay--selected" : ""} ${disabled ? "dtpDay--disabled" : ""}`;
-                return (
-                  <button
-                    class={cls}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => selectDay(d)}
-                    aria-label={`${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`}
-                  >
-                    {d.getDate()}
-                  </button>
-                );
-              }}
-            </For>
-          </div>
-
-          <div class="dtpTimeRow">
-            <select
-              class="select dtpSelect"
-              value={String(draftHour())}
-              onChange={(e) => setTime(Number(e.currentTarget.value), draftMinute())}
-            >
-              <For each={Array.from({ length: 24 }, (_, i) => i)}>
-                {(h) => <option value={String(h)}>{pad2(h)}</option>}
+            <div class="dtpDow">
+              <For each={["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]}>
+                {(d) => <div>{d}</div>}
               </For>
-            </select>
-            <span class="dtpColon">:</span>
-            <select
-              class="select dtpSelect"
-              value={String(draftMinute())}
-              onChange={(e) => setTime(draftHour(), Number(e.currentTarget.value))}
-            >
-              <For each={Array.from({ length: 60 }, (_, i) => i)}>
-                {(m) => <option value={String(m)}>{pad2(m)}</option>}
-              </For>
-            </select>
-          </div>
+            </div>
 
-          <div class="dtpActions">
-            <button class="btn" type="button" onClick={closePicker}>
-              Cancel
-            </button>
-            <button class="btn btnPrimary" type="button" onClick={apply}>
-              Apply
-            </button>
+            <div class="dtpGrid">
+              <For each={days()}>
+                {(d) => {
+                  const inMonth = d.getMonth() === viewMonth().getMonth();
+                  const cur = draft();
+                  const selected = cur ? isSameDay(cur, d) : false;
+                  const today = isSameDay(new Date(), d);
+                  const disabled = !canPick(d);
+                  const cls = `dtpDay ${inMonth ? "" : "dtpDay--dim"} ${today ? "dtpDay--today" : ""} ${selected ? "dtpDay--selected" : ""} ${disabled ? "dtpDay--disabled" : ""}`;
+                  return (
+                    <button
+                      class={cls}
+                      type="button"
+                      disabled={disabled}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        selectDay(d);
+                      }}
+                      onClick={() => selectDay(d)}
+                      aria-label={`${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`}
+                    >
+                      {d.getDate()}
+                    </button>
+                  );
+                }}
+              </For>
+            </div>
+
+            <div class="dtpTimeRow">
+              <select
+                class="select dtpSelect"
+                value={String(draftHour())}
+                onChange={(e) => setTime(Number(e.currentTarget.value), draftMinute())}
+              >
+                <For each={Array.from({ length: 24 }, (_, i) => i)}>
+                  {(h) => <option value={String(h)}>{pad2(h)}</option>}
+                </For>
+              </select>
+              <span class="dtpColon">:</span>
+              <select
+                class="select dtpSelect"
+                value={String(draftMinute())}
+                onChange={(e) => setTime(draftHour(), Number(e.currentTarget.value))}
+              >
+                <For each={Array.from({ length: 60 }, (_, i) => i)}>
+                  {(m) => <option value={String(m)}>{pad2(m)}</option>}
+                </For>
+              </select>
+            </div>
+
+            <div class="dtpActions">
+              <button class="btn" type="button" onClick={jumpToday}>
+                Today
+              </button>
+              <button class="btn" type="button" onClick={closePicker}>
+                Cancel
+              </button>
+              <button class="btn btnPrimary" type="button" onClick={apply}>
+                Apply
+              </button>
+            </div>
           </div>
-        </div>
+        </Portal>
       </Show>
     </div>
   );

@@ -103,7 +103,7 @@ export default function ResetPassword() {
                 class="grid"
                 style="grid-template-columns: repeat(12, 1fr); gap: 14px"
               >
-                <div class="field" style="grid-column: span 12">
+                <div class="field colSpan12">
                   <label for="new_password">
                     New Password<span class="fieldReq">*</span>
                   </label>
@@ -120,7 +120,7 @@ export default function ResetPassword() {
                     <div class="fieldError">{pwError()}</div>
                   </Show>
                 </div>
-                <div class="field" style="grid-column: span 12">
+                <div class="field colSpan12">
                   <label for="confirm_password">
                     Confirm Password<span class="fieldReq">*</span>
                   </label>
@@ -137,7 +137,10 @@ export default function ResetPassword() {
                     <div class="fieldError">{pw2Error()}</div>
                   </Show>
                 </div>
-                <div style="grid-column: span 12; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap">
+                <div
+                  class="colSpan12"
+                  style="display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap"
+                >
                   <button class="btn btnHero" type="submit" disabled={!canSubmit()}>
                     <span style="display: inline-flex; gap: 10px; align-items: center">
                       {busy() ? <span class="spinner" /> : null}

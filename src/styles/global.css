@@ -328,6 +328,11 @@ body::before {
   mask-image: radial-gradient(closest-side at 50% 30%, black, transparent 70%);
 }
 
+img {
+  max-width: 100%;
+  height: auto;
+}
+
 a {
   color: inherit;
 }
@@ -373,7 +378,7 @@ input {
 .panelInner {
   position: relative;
   z-index: 1;
-  padding: 26px;
+  padding: clamp(16px, 3vw, 26px);
 }
 
 .title {
@@ -409,6 +414,43 @@ input {
   gap: 16px;
 }
 
+.colSpan12 {
+  grid-column: span 12;
+}
+.colSpan11 {
+  grid-column: span 11;
+}
+.colSpan10 {
+  grid-column: span 10;
+}
+.colSpan9 {
+  grid-column: span 9;
+}
+.colSpan8 {
+  grid-column: span 8;
+}
+.colSpan7 {
+  grid-column: span 7;
+}
+.colSpan6 {
+  grid-column: span 6;
+}
+.colSpan5 {
+  grid-column: span 5;
+}
+.colSpan4 {
+  grid-column: span 4;
+}
+.colSpan3 {
+  grid-column: span 3;
+}
+.colSpan2 {
+  grid-column: span 2;
+}
+.colSpan1 {
+  grid-column: span 1;
+}
+
 .card {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
@@ -416,6 +458,7 @@ input {
   position: relative;
   overflow: hidden;
   transform: translateZ(0);
+  min-width: 0;
 }
 
 .card::before {
@@ -429,6 +472,7 @@ input {
     radial-gradient(circle at 70% 70%, var(--glowB), transparent 60%);
   filter: blur(8px);
   opacity: 0.65;
+  pointer-events: none;
 }
 
 .cardInner {
@@ -662,6 +706,32 @@ input {
   gap: 14px;
 }
 
+.cashModal {
+  display: grid;
+  gap: 14px;
+}
+
+.cashModalHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cashModalGrid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cashModalActions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 .cashSide {
   grid-column: span 4;
   display: grid;
@@ -677,7 +747,7 @@ input {
 
 .cashCalcGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
 }
 
@@ -695,6 +765,8 @@ input {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .cashCalcValue {
@@ -702,6 +774,115 @@ input {
   letter-spacing: -0.02em;
   color: var(--ink);
   font-size: 14px;
+  min-width: 0;
+}
+
+.cashCalcPanel {
+  margin-top: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 14px;
+  background:
+    radial-gradient(circle at 18% 22%, rgba(124, 255, 214, 0.09), transparent 62%),
+    radial-gradient(circle at 84% 18%, rgba(157, 124, 255, 0.08), transparent 64%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.02));
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.cashCalcPanelHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cashCalcPanelTitle {
+  font-weight: 950;
+  letter-spacing: -0.02em;
+}
+
+.cashCalcPanelSub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cashCalcPanelGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.cashCalcPanelGrid > * {
+  min-width: 0;
+}
+
+.cashCalcHero {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.035);
+  display: grid;
+  gap: 6px;
+}
+
+.cashCalcHero--base {
+  background:
+    radial-gradient(circle at 30% 30%, rgba(124, 255, 214, 0.12), transparent 70%),
+    rgba(255, 255, 255, 0.03);
+}
+
+.cashCalcHero--profit {
+  background:
+    radial-gradient(circle at 30% 30%, rgba(157, 124, 255, 0.12), transparent 70%),
+    rgba(255, 255, 255, 0.03);
+}
+
+.cashCalcHero--negative {
+  border-color: rgba(255, 124, 207, 0.3);
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 124, 207, 0.14), transparent 70%),
+    rgba(255, 255, 255, 0.03);
+}
+
+.cashCalcHeroLabel {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.cashCalcHeroValue {
+  font-weight: 950;
+  letter-spacing: -0.03em;
+  font-size: clamp(16px, 4.2vw, 18px);
+  min-width: 0;
+}
+
+.cashCalcGroup {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  display: grid;
+  gap: 10px;
+}
+
+.cashCalcGroupTitle {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.25;
+}
+
+.cashCalcGroup .cashCalcCard {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .cashBreakdown {
@@ -734,7 +915,7 @@ input {
 }
 
 @media (max-width: 640px) {
-  .cashCalcGrid {
+  .cashModalGrid2 {
     grid-template-columns: 1fr;
   }
 
@@ -788,6 +969,35 @@ input {
   padding-top: 6px;
 }
 
+.cashInquiryActions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    radial-gradient(circle at 20% 25%, rgba(124, 255, 214, 0.09), transparent 62%),
+    radial-gradient(circle at 84% 18%, rgba(157, 124, 255, 0.08), transparent 64%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+}
+
+.cashInquiryActions .btn {
+  min-height: 48px;
+}
+
+.cashInquiryControls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
 .exportBtn {
   border-color: rgba(255, 255, 255, 0.2);
   min-height: 48px;
@@ -801,6 +1011,15 @@ input {
   justify-content: center;
   width: 100%;
   font: inherit;
+}
+
+.cashSummaryControls .exportBtn {
+  min-height: 44px;
+  padding: 10px 12px;
+}
+
+.cashSummaryControls .exportBtnInner {
+  justify-content: flex-start;
 }
 
 .exportBtnText {
@@ -824,29 +1043,81 @@ input {
   position: absolute;
   top: calc(100% + 10px);
   left: 0;
-  min-width: 210px;
-  padding: 10px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  right: 0;
+  width: 100%;
+  min-width: 240px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
   background:
     radial-gradient(circle at 14% 20%, rgba(124, 255, 214, 0.12), transparent 62%),
     radial-gradient(circle at 86% 16%, rgba(157, 124, 255, 0.11), transparent 65%),
     linear-gradient(180deg, rgba(18, 24, 40, 0.9), rgba(10, 12, 18, 0.74));
-  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.48);
+  box-shadow:
+    0 22px 70px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(12px);
   z-index: 50;
   display: grid;
-  gap: 8px;
+  gap: 10px;
+  transform-origin: top;
+  animation: exportMenuIn 120ms ease-out;
+}
+
+.exportMenu::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  left: 22px;
+  width: 14px;
+  height: 14px;
+  background: linear-gradient(180deg, rgba(18, 24, 40, 0.9), rgba(10, 12, 18, 0.74));
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  transform: rotate(45deg);
+}
+
+.exportMenuHeader {
+  padding: 2px 4px 0;
+  display: grid;
+  gap: 2px;
+}
+
+.exportMenuTitle {
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.exportMenuSub {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.exportMenuHint {
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.exportMenuGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .exportItem {
   appearance: none;
   width: 100%;
   text-align: left;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
+  padding: 12px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.045);
   color: var(--ink);
   cursor: pointer;
   font: inherit;
@@ -867,9 +1138,11 @@ input {
 .exportItemIcon {
   width: 32px;
   height: 32px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    radial-gradient(circle at 30% 30%, rgba(124, 255, 214, 0.14), transparent 70%),
+    rgba(255, 255, 255, 0.04);
   display: grid;
   place-items: center;
   flex: 0 0 auto;
@@ -888,13 +1161,24 @@ input {
 .exportItem:hover {
   transform: translateY(-1px);
   border-color: rgba(124, 255, 214, 0.34);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .exportItem:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+}
+
+@keyframes exportMenuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .cashSummary {
@@ -904,18 +1188,133 @@ input {
 
 .cashSummaryBar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
 }
 
 .cashSummaryControls {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 14px;
+  align-items: end;
+  width: min(860px, 100%);
+  margin-left: auto;
+  padding: 14px 14px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    radial-gradient(circle at 18% 30%, rgba(124, 255, 214, 0.08), transparent 60%),
+    radial-gradient(circle at 86% 18%, rgba(157, 124, 255, 0.08), transparent 65%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  overflow: visible;
+}
+
+.cashSummaryControls::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 40% 0%, rgba(255, 255, 255, 0.06), transparent 55%);
+  pointer-events: none;
+}
+
+.cashSummaryControls {
+  position: relative;
+}
+
+.cashSummaryRange {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  flex-wrap: wrap;
+  width: 100%;
+  max-width: 720px;
+  padding: 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+}
+
+.cashSummaryControls .cashSummaryRange {
+  grid-column: 1 / -1;
+  max-width: none;
+}
+
+.cashSummaryControls .cashFilterActions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
   align-items: center;
+}
+
+.cashSummaryControls .cashFilterActions .btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.cashSummaryControls .cashFilterActions .exportWrap {
+  width: 100%;
+}
+
+.cashSummaryControls .cashFilterActions .exportBtn {
+  width: 100%;
+}
+
+.cashSummaryControls .cashSummaryActions {
+  grid-column: 3;
+  display: flex;
   justify-content: flex-end;
+}
+
+.cashSummaryControls .cashSummaryActions .exportBtn {
+  min-height: 40px;
+  padding: 8px 10px;
+  width: auto;
+}
+
+.cashSummaryControls .select {
+  width: 100%;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.cashSummaryFilterField {
+  min-width: 0;
+}
+
+.cashSummaryFilterField--period {
+  min-width: 0;
+}
+
+.cashSummaryControls .field label {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.cashSummaryControls .field {
+  gap: 6px;
+}
+
+.cashSummaryControls .select:focus {
+  box-shadow:
+    0 0 0 3px rgba(124, 255, 214, 0.14),
+    0 0 0 1px rgba(124, 255, 214, 0.22);
+}
+
+.cashSummaryRangeField {
+  min-width: 0;
+}
+
+.cashSummaryRange .field label {
+  font-size: 11px;
+  letter-spacing: 0.1em;
 }
 
 @media (max-width: 520px) {
@@ -957,12 +1356,27 @@ input {
     min-width: 0;
   }
 
+  .exportMenuGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .cashSummaryBar {
+    flex-direction: column;
+  }
+
   .cashSummaryControls {
+    width: 100%;
+    grid-template-columns: 1fr;
+    margin-left: 0;
+  }
+
+  .cashSummaryRange {
+    grid-template-columns: 1fr;
     width: 100%;
   }
 
-  .cashSummaryControls .select {
-    width: 100%;
+  .cashSummaryControls .cashSummaryActions {
+    grid-column: 1 / -1;
   }
 }
 
@@ -994,6 +1408,7 @@ input {
     radial-gradient(circle at 70% 70%, var(--glowB), transparent 60%);
   filter: blur(10px);
   opacity: 0.6;
+  pointer-events: none;
 }
 
 .cashSummaryCardTop {
@@ -1074,10 +1489,32 @@ input {
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.03);
   box-shadow: 0 16px 46px rgba(0, 0, 0, 0.2);
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .cashInquiryScroll {
   max-height: min(520px, 58vh);
+}
+
+.cashTableFooter {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cashTableFooterText {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.cashTableFooterActions {
+  display: inline-flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .cashRowClickable {
@@ -1112,6 +1549,39 @@ input {
   background: var(--table-header-bg);
   backdrop-filter: blur(10px);
   z-index: 1;
+}
+
+.sortHeaderBtn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  width: 100%;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.sortHeaderBtn:hover .sortCaret {
+  opacity: 0.9;
+}
+
+.sortCaret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  opacity: 0.7;
 }
 
 .cashTable td {
@@ -1743,6 +2213,46 @@ input {
   background: linear-gradient(135deg, rgba(255, 124, 207, 0.95), rgba(255, 92, 92, 0.85));
 }
 
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(250, 250, 255, 0.86);
+  white-space: nowrap;
+}
+
+.statusPill--pending {
+  border-color: rgba(255, 188, 124, 0.28);
+  background: linear-gradient(135deg, rgba(255, 188, 124, 0.18), rgba(157, 124, 255, 0.06));
+  color: rgba(255, 216, 180, 0.95);
+}
+
+.statusPill--success {
+  border-color: rgba(124, 255, 214, 0.28);
+  background: linear-gradient(135deg, rgba(124, 255, 214, 0.16), rgba(157, 124, 255, 0.06));
+  color: rgba(124, 255, 214, 0.96);
+}
+
+.statusPill--inactive {
+  border-color: rgba(140, 180, 255, 0.26);
+  background: linear-gradient(135deg, rgba(140, 180, 255, 0.14), rgba(255, 255, 255, 0.03));
+  color: rgba(205, 224, 255, 0.95);
+}
+
+.statusPill--deleted {
+  border-color: rgba(255, 92, 92, 0.28);
+  background: linear-gradient(135deg, rgba(255, 92, 92, 0.16), rgba(255, 124, 207, 0.08));
+  color: rgba(255, 178, 178, 0.96);
+}
+
 .dtpWrap {
   position: relative;
 }
@@ -1769,7 +2279,7 @@ input {
 
 .dtpPanel {
   position: fixed;
-  z-index: 60;
+  z-index: 2000;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background:
@@ -1783,6 +2293,18 @@ input {
   overflow: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  animation: dtpPop 130ms ease-out;
+}
+
+@keyframes dtpPop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .dtpTrigger {
@@ -1867,6 +2389,7 @@ input {
   background: rgba(255, 255, 255, 0.03);
   color: rgba(250, 250, 255, 0.9);
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .dtpDay:active {
@@ -1880,6 +2403,10 @@ input {
 .dtpDay--selected {
   border-color: rgba(124, 255, 214, 0.35);
   background: linear-gradient(135deg, rgba(124, 255, 214, 0.18), rgba(157, 124, 255, 0.12));
+}
+
+.dtpDay--today {
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .dtpDay--disabled {
@@ -2281,6 +2808,86 @@ input {
     color 0.14s ease;
 }
 
+.sharePanel {
+  margin-top: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    radial-gradient(circle at 18% 18%, rgba(124, 255, 214, 0.14), transparent 58%),
+    radial-gradient(circle at 86% 22%, rgba(157, 124, 255, 0.14), transparent 58%),
+    linear-gradient(180deg, rgba(22, 30, 52, 0.62), rgba(10, 12, 20, 0.6));
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+  padding: 14px 14px;
+  display: grid;
+  gap: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.sharePanel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  opacity: 0.95;
+}
+
+.sharePanelTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 1;
+}
+
+.shareTitle {
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(250, 250, 255, 0.78);
+  font-weight: 900;
+}
+
+.shareSub {
+  margin-top: 4px;
+  color: rgba(250, 250, 255, 0.68);
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 64ch;
+}
+
+.sharePanelGrid {
+  position: relative;
+  z-index: 1;
+}
+
+.sharePanelActions {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.shareDefaultField {
+  min-width: 220px;
+}
+
+@media (max-width: 520px) {
+  .shareDefaultField {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .sharePanelActions {
+    grid-template-columns: 1fr;
+  }
+}
+
 .segBtn:hover {
   transform: translateY(-1px);
   border-color: var(--hover-border);
@@ -2517,8 +3124,7 @@ input {
   border: 1px dashed color-mix(in srgb, var(--line) 88%, transparent);
   background:
     radial-gradient(circle at 20% 10%, var(--glowC), transparent 55%),
-    radial-gradient(circle at 85% 25%, var(--glowA), transparent 55%),
-    var(--card-bg);
+    radial-gradient(circle at 85% 25%, var(--glowA), transparent 55%), var(--card-bg);
   cursor: pointer;
   transition:
     transform 0.14s ease,
@@ -2534,8 +3140,16 @@ input {
 .dropzoneActive {
   border-color: var(--hover-border);
   background:
-    radial-gradient(circle at 20% 10%, color-mix(in srgb, var(--glowC) 115%, transparent), transparent 55%),
-    radial-gradient(circle at 85% 25%, color-mix(in srgb, var(--glowA) 115%, transparent), transparent 55%),
+    radial-gradient(
+      circle at 20% 10%,
+      color-mix(in srgb, var(--glowC) 115%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 85% 25%,
+      color-mix(in srgb, var(--glowA) 115%, transparent),
+      transparent 55%
+    ),
     var(--card-bg);
 }
 
@@ -2721,6 +3335,8 @@ input {
   max-height: min(62vh, 620px);
   overflow: auto;
   padding-right: 4px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modalListScroll::-webkit-scrollbar {
@@ -2732,6 +3348,58 @@ input {
   border-radius: 999px;
   border: 2px solid rgba(0, 0, 0, 0);
   background-clip: padding-box;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+}
+
+.modalCard {
+  width: min(980px, 100%);
+  border-radius: 22px;
+  overflow: hidden;
+}
+
+.modalCardInner {
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  padding-right: 4px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modalCardInner::-webkit-scrollbar {
+  width: 10px;
+}
+
+.modalCardInner::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  border: 2px solid rgba(0, 0, 0, 0);
+  background-clip: padding-box;
+}
+
+@media (max-width: 520px) {
+  .modalOverlay {
+    padding: 12px;
+    place-items: stretch;
+  }
+
+  .modalCard {
+    width: 100%;
+    border-radius: 18px;
+  }
+
+  .modalCardInner {
+    max-height: calc(100vh - 24px);
+  }
 }
 
 .appFooter {
@@ -2804,7 +3472,7 @@ input {
   }
 
   .grid > * {
-    grid-column: 1 / -1 !important;
+    grid-column: 1 / -1;
   }
 
   .filterRow2,
