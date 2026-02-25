@@ -54,11 +54,11 @@ export default function SignIn() {
       if (rememberMe()) {
         try {
           localStorage.setItem("remembered_login", identifier().trim());
-        } catch {}
+        } catch { }
       } else {
         try {
           localStorage.removeItem("remembered_login");
-        } catch {}
+        } catch { }
       }
       await auth.signIn(identifier(), password());
     } catch (err) {
@@ -69,10 +69,10 @@ export default function SignIn() {
           : code === "USER_NOT_FOUND"
             ? "User is not found in our system."
             : code === "EMAIL_NOT_VERIFIED"
-              ? "Email not verified yet. Check your inbox."
+              ? "Your account has been registered but your email is not verified yet. Please check your inbox (and spam folder) for the verification email and click the verification link to activate your account."
               : "Sign in failed. Try again.";
-      setToast({ id: Date.now(), kind: "error", message: msg });
-      toastTimer = globalThis.setTimeout(() => setToast(null), 5000);
+      setToast({ id: Date.now(), kind: "error", message: msg, durationMs: code === "EMAIL_NOT_VERIFIED" ? 12000 : 5000 });
+      toastTimer = globalThis.setTimeout(() => setToast(null), code === "EMAIL_NOT_VERIFIED" ? 12000 : 5000);
     }
   };
 
@@ -93,7 +93,7 @@ export default function SignIn() {
       if (!parsed?.message || !parsed.kind) return;
       setToast({ id: Date.now(), kind: parsed.kind, message: parsed.message });
       toastTimer = globalThis.setTimeout(() => setToast(null), 5000);
-    } catch {}
+    } catch { }
   });
 
   createEffect(() => {
@@ -102,7 +102,7 @@ export default function SignIn() {
       if (!remembered) return;
       setIdentifier(remembered);
       setRememberMe(true);
-    } catch {}
+    } catch { }
   });
 
   const formatCountdown = (ms: number) => {
